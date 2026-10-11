@@ -10,7 +10,7 @@ from pathlib import Path
 import pandas as pd
 import torch
 
-from vimmsd.data.dataset import ViMMSDCollator, build_dataloaders, build_datasets
+from vimmsd.data.dataset import ViMMSDCollator, build_dataloaders, build_datasets, stage_preprocessed_cache
 from vimmsd.models.classifier import MODALITY_NEEDS, build_model
 from vimmsd.training.metrics import compute_metrics, format_metrics, plot_confusion_matrix
 from vimmsd.training.trainer import predict
@@ -29,6 +29,7 @@ def main():
     logging.getLogger("httpx").setLevel(logging.WARNING)
 
     cfg = load_config(args.config, args.override)
+    stage_preprocessed_cache(cfg)
     output_dir = Path(cfg.paths.output_dir) / cfg.name
     ckpt = Path(args.checkpoint) if args.checkpoint else output_dir / "best.pt"
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

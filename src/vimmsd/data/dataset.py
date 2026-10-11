@@ -1,5 +1,6 @@
 import json
 import logging
+import shutil
 from collections import Counter
 from pathlib import Path
 
@@ -165,9 +166,48 @@ class ViMMSDCollator:
 
 
 def text_cache_dir(cfg):
-    """Thư mục chứa 01a_text_preprocessing.json. None trong config thì dùng paths.cache_dir."""
+    """Thư mục chứa file cache caption. None trong config thì dùng paths.cache_dir."""
     text_cfg = cfg.data.get("text") or {}
     return text_cfg.get("cache_dir") or cfg.paths.get("cache_dir")
+
+
+def stage_preprocessed_cache(cfg, search_root=None):
+    """Copy JSON đã preprocess từ dataset Kaggle sang thư mục cache ghi được.
+
+    Dataset `funalee/vimmsd-data-preprocessed`: `text_preprocessed.json` cho caption,
+    `image_preprocessed.json` cho OCR và mô tả VLM. `image_preprocessed.csv` là bảng xem
+    cùng nội dung đó, không đưa vào model.
+    """
+    root = Path(search_root) if search_root is not None else Path("/kaggle/input")
+    if not root.exists():
+        return []
+    text_cfg = cfg.data.get("text") or {}
+    it_cfg = cfg.data.get("image_text") or {}
+    names = []
+    if text_cfg.get("cache_file"):
+        names.append(text_cfg["cache_file"])
+    if it_cfg.get("file") and (it_cfg.get("use_ocr") or it_cfg.get("use_description")):
+        names.append(it_cfg["file"])
+    if not names:
+        return []
+    dest_dir = Path(text_cfg.get("cache_dir") or cfg.paths.cache_dir)
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    copied = []
+    for name in names:
+        dest = dest_dir / name
+        if dest.exists():
+            logger.info("dùng cache có sẵn %s", dest)
+            copied.append(dest)
+            continue
+        hits = sorted(p for p in root.rglob(name) if p.is_file())
+        if not hits:
+            raise FileNotFoundError(
+                f"không thấy {name} trong {root}. Add Input dataset funalee/vimmsd-data-preprocessed."
+            )
+        shutil.copy(hits[0], dest)
+        logger.info("copy %s -> %s", hits[0], dest)
+        copied.append(dest)
+    return copied
 
 
 def collect_captions(cfg):
@@ -203,10 +243,52 @@ def build_text_cache(cfg):
     return pre._cache_file(out_dir), len(captions), used
 
 
+_IMAGE_TEXT_FIELDS = {
+    "ocr": ("ocr", "text"),
+    "description": ("description", "vlm", "vlm_description"),
+}
+
+
+def _image_field(entry, field):
+    if not isinstance(entry, dict):
+        return ""
+    for name in _IMAGE_TEXT_FIELDS[field]:
+        value = entry.get(name)
+        if value:
+            return str(value)
+    return ""
+
+
+def _load_combined_image_text(path, it_cfg):
+    """Đọc `image_preprocessed.json` của dataset Kaggle: {"meta": {...}, "images": {image_key: {ocr, description}}}."""
+    if not path.exists():
+        raise FileNotFoundError(
+            f"thiếu {path}: attach funalee/vimmsd-data-preprocessed và copy image_preprocessed.json vào thư mục cache"
+        )
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    images = raw.get("images") if isinstance(raw, dict) else None
+    if not isinstance(images, dict):
+        raise ValueError(f"{path} cần object images (image_key -> {{ocr, description}})")
+    sample = next(iter(images.values()), {})
+    if not isinstance(sample, dict):
+        raise ValueError(f"{path}: mỗi ảnh phải là object có ocr và description, gặp {type(sample).__name__}")
+    texts = {}
+    for field, flag in (("ocr", "use_ocr"), ("description", "use_description")):
+        if it_cfg.get(flag):
+            texts[field] = {key: _image_field(entry, field) for key, entry in images.items()}
+    meta = raw.get("meta") or {}
+    logger.info("đọc %d ảnh từ %s (missing=%s)", len(images), path.name, meta.get("missing"))
+    return texts
+
+
 def load_image_texts(cfg):
     """Đọc cache OCR / mô tả VLM theo `data.image_text` trong config. Trả về {} nếu không dùng."""
     it_cfg = cfg.data.get("image_text") or {}
+    if not (it_cfg.get("use_ocr") or it_cfg.get("use_description")):
+        return {}
     cache_dir = Path(it_cfg.get("dir") or cfg.paths.cache_dir)
+    if it_cfg.get("file"):
+        return _load_combined_image_text(cache_dir / it_cfg["file"], it_cfg)
     texts = {}
     for field, flag, name in (("ocr", "use_ocr", "ocr_cache"), ("description", "use_description", "description_cache")):
         if it_cfg.get(flag):

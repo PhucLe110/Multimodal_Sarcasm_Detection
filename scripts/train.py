@@ -5,7 +5,8 @@ import logging
 from datetime import datetime
 from pathlib import Path
 
-from vimmsd.data.dataset import ViMMSDCollator, build_dataloaders, build_datasets, class_counts
+from vimmsd.data.dataset import (ViMMSDCollator, build_dataloaders, build_datasets, class_counts,
+                                 stage_preprocessed_cache)
 from vimmsd.models.classifier import MODALITY_NEEDS, build_model
 from vimmsd.training.losses import build_loss
 from vimmsd.training.metrics import format_metrics, plot_confusion_matrix
@@ -41,6 +42,7 @@ def main():
     log = logging.getLogger("train")
 
     cfg = load_config(args.config, args.override)
+    stage_preprocessed_cache(cfg)
     set_seed(cfg.seed)
     commit = git_commit()
     output_dir = Path(cfg.paths.output_dir) / cfg.name
@@ -69,9 +71,13 @@ def main():
     plot_confusion_matrix(test_metrics["confusion_matrix"], cfg.data.labels,
                           output_dir / "confusion_matrix_test.png", title=cfg.name)
 
+    note = args.note
+    if summary.get("peak_vram_gb") is not None:
+        vram = f"peak VRAM {summary['peak_vram_gb']:.2f} GB"
+        note = f"{note} | {vram}" if note else vram
     row = (f"| {datetime.now():%Y-%m-%d} | `{cfg.name}` | `{commit}` | {cfg.env} | "
            f"{summary['best_val_macro_f1']:.4f} | {test_metrics['macro_f1']:.4f} | "
-           f"{summary['train_minutes']:.1f} | {args.note} |")
+           f"{summary['train_minutes']:.1f} | {note} |")
     # trên Kaggle/Colab repo là bản clone tạm, nên ghi thêm vào output_dir để copy dòng này về reports/results.md
     append_result(output_dir / "results_row.md", row)
     if cfg.env == "local":

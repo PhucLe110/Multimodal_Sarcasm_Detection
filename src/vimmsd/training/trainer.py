@@ -113,6 +113,8 @@ class Trainer:
 
     def fit(self):
         start = time.time()
+        if torch.cuda.is_available():
+            torch.cuda.reset_peak_memory_stats()
         for epoch in range(self.start_epoch, self.epochs):
             train_loss = self.train_epoch(epoch)
             metrics, _ = self.evaluate("val")
@@ -136,8 +138,11 @@ class Trainer:
             if self.patience and self.bad_epochs >= self.patience:
                 logger.info("early stopping: val macro-F1 không cải thiện sau %d epoch", self.patience)
                 break
+        peak_vram_gb = None
+        if torch.cuda.is_available():
+            peak_vram_gb = torch.cuda.max_memory_allocated() / (1024 ** 3)
         return {"best_val_macro_f1": self.best_f1, "train_minutes": (time.time() - start) / 60,
-                "history": self.history}
+                "peak_vram_gb": peak_vram_gb, "history": self.history}
 
     def load_best(self):
         load_checkpoint(self.output_dir / "best.pt", self.model, map_location=self.device)
