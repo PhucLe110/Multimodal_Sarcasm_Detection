@@ -167,6 +167,40 @@ def test_clean_text_word_segment_vncorenlp():
     assert out == "Học_sinh sinh_viên dùng mạng xã_hội"
 
 
+def test_text_aux_fusion_keeps_caption_as_main():
+    from vimmsd.models.fusion import TextAuxFusion
+
+    fusion = TextAuxFusion(4, ocr_gate_init=0.1, description_gate_init=0.1)
+    caption = torch.ones(2, 4)
+    ocr = torch.full((2, 4), 10.0)
+    description = torch.full((2, 4), 5.0)
+    present = torch.tensor([1.0, 0.0])
+    out = fusion({
+        "pooled": caption,
+        "ocr": ocr,
+        "ocr_present": present,
+        "description": description,
+        "description_present": present,
+    })
+    weights = fusion.weights()
+    assert weights["caption"] == 1.0
+    assert abs(weights["ocr"] - 0.1) < 1e-5 and abs(weights["description"] - 0.1) < 1e-5
+    assert torch.allclose(out[0], caption[0] + 0.1 * ocr[0] + 0.1 * description[0])
+    assert torch.allclose(out[1], caption[1])
+
+
+def test_text_aux_collator_does_not_merge_fields():
+    items = [
+        {"id": "0", "label": 0, "text": "caption một", "ocr": "chữ OCR", "description": ""},
+        {"id": "1", "label": 1, "text": "caption hai", "ocr": "", "description": "một mô tả"},
+    ]
+    batch = ViMMSDCollator(StubTokenizer(), max_length=16, aux_max_length=8)(items)
+    assert "input_ids" in batch and "ocr_input_ids" in batch and "description_input_ids" in batch
+    assert batch["ocr_present"].tolist() == [1.0, 0.0]
+    assert batch["description_present"].tolist() == [0.0, 1.0]
+    assert batch["ocr_input_ids"].shape[0] == 2
+
+
 def test_collator_clips_caption_before_only_second():
     # caption dài hơn max_length: cắt caption trước để only_second không trả về chuỗi quá dài
     seen = {}

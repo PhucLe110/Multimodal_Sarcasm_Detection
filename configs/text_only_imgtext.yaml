@@ -1,9 +1,15 @@
-# Model 3.2: PhoBERT, input gồm caption đã preprocess + chữ OCR + mô tả VLM.
-# Cả hai nguồn chữ lấy từ funalee/vimmsd-data-preprocessed.
+# Model 3.2: caption là feature chính. OCR và mô tả VLM là hai feature phụ,
+# mỗi cái một gate học được, không gộp ba trường thành một chuỗi.
 inherit: text_only.yaml
+model:
+  modality: text_aux
+  fusion:
+    ocr_gate_init: 0.1
+    description_gate_init: 0.1
 data:
   max_length: 256
   image_text:
     use_ocr: true
     use_description: true
     file: image_preprocessed.json
+    aux_max_length: 96

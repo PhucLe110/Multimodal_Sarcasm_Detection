@@ -72,21 +72,35 @@ def split_records(records, val_ratio, test_ratio, seed):
 
 class ViMMSDDataset(Dataset):
     def __init__(self, records, text_preprocessor=None, image_transform=None,
-                 load_image=True, cache_dir=None, use_image_text=False, missing_image_color=(0, 0, 0)):
+                 load_image=True, cache_dir=None, use_image_text=False, separate_image_text=False,
+                 missing_image_color=(0, 0, 0)):
         self.records = records
         self.image_transform = image_transform
         self.load_image = load_image
         self.missing_image_color = tuple(missing_image_color)
+        self.separate_image_text = bool(separate_image_text and use_image_text)
 
         captions = [r["caption"] for r in records]
-        image_texts = [compose_image_text(clean_ocr(r.get("ocr", ""), r["caption"]), r.get("description", ""))
-                       for r in records]
         if text_preprocessor is not None:
             captions = text_preprocessor.process_all(captions, cache_dir=cache_dir)
-            if use_image_text:
-                image_texts = text_preprocessor.process_all(image_texts, cache_dir=cache_dir)
         self.texts = captions
-        self.image_texts = image_texts if use_image_text else None
+        self.image_texts = None
+        self.ocrs = None
+        self.descriptions = None
+        if use_image_text and self.separate_image_text:
+            ocrs = [clean_ocr(r.get("ocr", ""), r["caption"]) for r in records]
+            descriptions = [r.get("description", "") or "" for r in records]
+            if text_preprocessor is not None:
+                ocrs = text_preprocessor.process_all(ocrs, cache_dir=cache_dir)
+                descriptions = text_preprocessor.process_all(descriptions, cache_dir=cache_dir)
+            self.ocrs = ocrs
+            self.descriptions = descriptions
+        elif use_image_text:
+            image_texts = [compose_image_text(clean_ocr(r.get("ocr", ""), r["caption"]), r.get("description", ""))
+                           for r in records]
+            if text_preprocessor is not None:
+                image_texts = text_preprocessor.process_all(image_texts, cache_dir=cache_dir)
+            self.image_texts = image_texts
         self._bad_images = 0
 
     def __len__(self):
@@ -110,7 +124,10 @@ class ViMMSDDataset(Dataset):
     def __getitem__(self, idx):
         rec = self.records[idx]
         item = {"id": rec["id"], "text": self.texts[idx], "label": rec["label"]}
-        if self.image_texts is not None:
+        if self.separate_image_text:
+            item["ocr"] = self.ocrs[idx]
+            item["description"] = self.descriptions[idx]
+        elif self.image_texts is not None:
             item["image_text"] = self.image_texts[idx]
         if self.load_image:
             img, missing = self._open_image(rec["image_path"])
@@ -128,11 +145,13 @@ class ViMMSDCollator:
     thiếu chỗ chỉ cắt ở segment 2 (`only_second`). Không dùng `only_second` một mình: nếu riêng caption đã
     dài hơn `max_length`, tokenizer không cắt gì và trả về chuỗi dài hơn giới hạn của PhoBERT."""
 
-    def __init__(self, tokenizer=None, image_processor=None, max_length=128, max_caption_length=None):
+    def __init__(self, tokenizer=None, image_processor=None, max_length=128, max_caption_length=None,
+                 aux_max_length=96):
         self.tokenizer = tokenizer
         self.image_processor = image_processor
         self.max_length = max_length
         self.max_caption_length = max_caption_length or max_length
+        self.aux_max_length = aux_max_length
 
     def _clip_caption(self, text):
         # only_second chỉ cắt được khi segment 2 dài hơn số token cần bỏ, tức caption + token đặc biệt < max_length
@@ -147,7 +166,18 @@ class ViMMSDCollator:
         }
         if self.tokenizer is not None:
             texts = [it["text"] for it in items]
-            if "image_text" in items[0]:
+            if "ocr" in items[0]:
+                # caption một mình. OCR và mô tả VLM tokenize riêng, không ghép vào caption.
+                enc = self.tokenizer(texts, padding=True, truncation=True,
+                                     max_length=self.max_length, return_tensors="pt")
+                for field in ("ocr", "description"):
+                    aux = self.tokenizer([it[field] for it in items], padding=True, truncation=True,
+                                         max_length=self.aux_max_length, return_tensors="pt")
+                    batch[f"{field}_input_ids"] = aux["input_ids"]
+                    batch[f"{field}_attention_mask"] = aux["attention_mask"]
+                    batch[f"{field}_present"] = torch.tensor(
+                        [float(bool(it[field].strip())) for it in items], dtype=torch.float)
+            elif "image_text" in items[0]:
                 # 2 segment: <s> caption </s></s> chữ trong ảnh + mô tả ảnh </s>
                 enc = self.tokenizer([self._clip_caption(t) for t in texts], [it["image_text"] for it in items],
                                      padding=True, truncation="only_second", max_length=self.max_length,
@@ -304,6 +334,11 @@ def uses_image_text(cfg):
     return bool(it_cfg.get("use_ocr") or it_cfg.get("use_description"))
 
 
+def separates_image_text(cfg):
+    """Model 3.2: OCR và mô tả là hai feature riêng, không gộp vào caption."""
+    return cfg.model.get("modality") == "text_aux" and uses_image_text(cfg)
+
+
 def load_all_records(cfg):
     """Trả về dict split -> records: train/val/test (chia từ tập có nhãn) và public_test (không nhãn)."""
     data_dir = Path(cfg.paths.data_dir)
@@ -352,6 +387,7 @@ def build_datasets(cfg, needs_text=True, needs_image=True, splits=("train", "val
             load_image=needs_image,
             cache_dir=text_cache_dir(cfg),
             use_image_text=uses_image_text(cfg) and needs_text,
+            separate_image_text=separates_image_text(cfg) and needs_text,
             missing_image_color=fill,
         )
     return datasets

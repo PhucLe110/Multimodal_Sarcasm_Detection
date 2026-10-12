@@ -1,3 +1,5 @@
+import math
+
 import torch
 import torch.nn as nn
 
@@ -14,6 +16,45 @@ class TextOnlyFusion(nn.Module):
 
     def forward(self, text, image=None):
         return text["pooled"]
+
+
+def _gate_logit(value):
+    value = min(max(float(value), 1e-4), 1 - 1e-4)
+    return math.log(value / (1 - value))
+
+
+class TextAuxFusion(nn.Module):
+    """Caption là feature chính, hệ số cố định 1.
+
+    OCR và mô tả VLM là hai feature phụ, mỗi cái một gate học được trong (0, 1), khởi tạo nhỏ.
+    h = h_caption + sigmoid(g_ocr) * h_ocr + sigmoid(g_vlm) * h_vlm.
+    Mẫu không có OCR hoặc không có mô tả thì feature phụ đó bằng 0, không cộng vào.
+    """
+
+    def __init__(self, text_dim, ocr_gate_init=0.1, description_gate_init=0.1, **_):
+        super().__init__()
+        self.out_dim = text_dim
+        self.ocr_gate = nn.Parameter(torch.tensor(_gate_logit(ocr_gate_init)))
+        self.description_gate = nn.Parameter(torch.tensor(_gate_logit(description_gate_init)))
+
+    def weights(self):
+        return {
+            "caption": 1.0,
+            "ocr": float(torch.sigmoid(self.ocr_gate).detach()),
+            "description": float(torch.sigmoid(self.description_gate).detach()),
+        }
+
+    def forward(self, text, image=None):
+        hidden = text["pooled"]
+        if text.get("ocr") is not None:
+            gate = torch.sigmoid(self.ocr_gate).to(hidden.dtype)
+            present = text["ocr_present"].unsqueeze(-1).to(hidden.dtype)
+            hidden = hidden + gate * text["ocr"] * present
+        if text.get("description") is not None:
+            gate = torch.sigmoid(self.description_gate).to(hidden.dtype)
+            present = text["description_present"].unsqueeze(-1).to(hidden.dtype)
+            hidden = hidden + gate * text["description"] * present
+        return hidden
 
 
 class ImageOnlyFusion(nn.Module):
@@ -97,6 +138,7 @@ class CrossAttentionFusion(nn.Module):
 
 FUSIONS = {
     "text": TextOnlyFusion,
+    "text_aux": TextAuxFusion,
     "image": ImageOnlyFusion,
     "concat": ConcatFusion,
     "cross_attn": CrossAttentionFusion,

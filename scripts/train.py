@@ -53,8 +53,9 @@ def main():
     model = build_model(cfg)
     needs_text, needs_image = MODALITY_NEEDS[cfg.model.modality]
     datasets = build_datasets(cfg, needs_text, needs_image)
+    aux_max_length = (cfg.data.get("image_text") or {}).get("aux_max_length") or 96
     collator = ViMMSDCollator(model.tokenizer, model.image_processor, cfg.data.max_length,
-                              cfg.data.get("max_caption_length"))
+                              cfg.data.get("max_caption_length"), aux_max_length)
     loaders = build_dataloaders(cfg, datasets, collator)
     counts = class_counts(datasets["train"], len(cfg.data.labels))
     log.info("train %d | val %d | test %d | phân bố lớp train %s",
@@ -65,6 +66,13 @@ def main():
     summary = trainer.fit()
 
     trainer.load_best()
+    aux_note = ""
+    if hasattr(trainer.model.fusion, "weights"):
+        weights = trainer.model.fusion.weights()
+        (output_dir / "aux_weights.json").write_text(json.dumps(weights, indent=2))
+        aux_note = (f"caption_weight={weights['caption']:.1f} ocr_weight={weights['ocr']:.3f} "
+                    f"description_weight={weights['description']:.3f}")
+        log.info("trọng số feature: %s", aux_note)
     test_metrics, _ = trainer.evaluate("test")
     log.info("test (best checkpoint)\n%s", format_metrics(test_metrics))
     (output_dir / "test_metrics.json").write_text(json.dumps(test_metrics, indent=2))
@@ -72,6 +80,8 @@ def main():
                           output_dir / "confusion_matrix_test.png", title=cfg.name)
 
     note = args.note
+    if aux_note:
+        note = f"{note} | {aux_note}" if note else aux_note
     if summary.get("peak_vram_gb") is not None:
         vram = f"peak VRAM {summary['peak_vram_gb']:.2f} GB"
         note = f"{note} | {vram}" if note else vram
