@@ -170,7 +170,7 @@ def test_clean_text_word_segment_vncorenlp():
 def test_text_aux_fusion_keeps_caption_as_main():
     from vimmsd.models.fusion import TextAuxFusion
 
-    fusion = TextAuxFusion(4, ocr_gate_init=0.1, description_gate_init=0.1)
+    fusion = TextAuxFusion(4, ocr_weight=0.5, description_weight=0.25)
     caption = torch.ones(2, 4)
     ocr = torch.full((2, 4), 10.0)
     description = torch.full((2, 4), 5.0)
@@ -182,11 +182,11 @@ def test_text_aux_fusion_keeps_caption_as_main():
         "description": description,
         "description_present": present,
     })
-    weights = fusion.weights()
-    assert weights["caption"] == 1.0
-    assert abs(weights["ocr"] - 0.1) < 1e-5 and abs(weights["description"] - 0.1) < 1e-5
-    assert torch.allclose(out[0], caption[0] + 0.1 * ocr[0] + 0.1 * description[0])
+    assert fusion.weights() == {"caption": 1.0, "ocr": 0.5, "description": 0.25}
+    assert torch.allclose(out[0], caption[0] + 0.5 * ocr[0] + 0.25 * description[0])
     assert torch.allclose(out[1], caption[1])
+    with pytest.raises(ValueError):
+        TextAuxFusion(4, ocr_weight=0.2, description_weight=0.5)
 
 
 def test_text_aux_collator_does_not_merge_fields():

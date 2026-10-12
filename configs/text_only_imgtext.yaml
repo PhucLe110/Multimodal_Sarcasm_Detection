@@ -1,11 +1,10 @@
-# Model 3.2: caption là feature chính. OCR và mô tả VLM là hai feature phụ,
-# mỗi cái một gate học được, không gộp ba trường thành một chuỗi.
+# Model 3.2: caption hệ số 1, OCR 0.5, mô tả VLM 0.25. Ba feature riêng, không gộp chuỗi.
 inherit: text_only.yaml
 model:
   modality: text_aux
   fusion:
-    ocr_gate_init: 0.1
-    description_gate_init: 0.1
+    ocr_weight: 0.5
+    description_weight: 0.25
 data:
   max_length: 256
   image_text:

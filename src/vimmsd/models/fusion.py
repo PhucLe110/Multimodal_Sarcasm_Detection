@@ -1,5 +1,3 @@
-import math
-
 import torch
 import torch.nn as nn
 
@@ -18,42 +16,34 @@ class TextOnlyFusion(nn.Module):
         return text["pooled"]
 
 
-def _gate_logit(value):
-    value = min(max(float(value), 1e-4), 1 - 1e-4)
-    return math.log(value / (1 - value))
-
-
 class TextAuxFusion(nn.Module):
     """Caption là feature chính, hệ số cố định 1.
 
-    OCR và mô tả VLM là hai feature phụ, mỗi cái một gate học được trong (0, 1), khởi tạo nhỏ.
-    h = h_caption + sigmoid(g_ocr) * h_ocr + sigmoid(g_vlm) * h_vlm.
-    Mẫu không có OCR hoặc không có mô tả thì feature phụ đó bằng 0, không cộng vào.
+    OCR đứng thứ hai, mô tả VLM đứng thứ ba. Hai hệ số phụ cố định, không học,
+    để lần chạy thực sự dùng hai nguồn này thay vì để gate kẹt ở 0.1.
+    h = h_caption + ocr_weight * h_ocr + description_weight * h_vlm.
+    Mẫu không có OCR hoặc không có mô tả thì feature phụ đó bằng 0.
     """
 
-    def __init__(self, text_dim, ocr_gate_init=0.1, description_gate_init=0.1, **_):
+    def __init__(self, text_dim, ocr_weight=0.5, description_weight=0.25, **_):
         super().__init__()
         self.out_dim = text_dim
-        self.ocr_gate = nn.Parameter(torch.tensor(_gate_logit(ocr_gate_init)))
-        self.description_gate = nn.Parameter(torch.tensor(_gate_logit(description_gate_init)))
+        self.ocr_weight = float(ocr_weight)
+        self.description_weight = float(description_weight)
+        if not 0 <= self.description_weight <= self.ocr_weight <= 1:
+            raise ValueError("cần 0 <= description_weight <= ocr_weight <= 1, caption giữ hệ số 1")
 
     def weights(self):
-        return {
-            "caption": 1.0,
-            "ocr": float(torch.sigmoid(self.ocr_gate).detach()),
-            "description": float(torch.sigmoid(self.description_gate).detach()),
-        }
+        return {"caption": 1.0, "ocr": self.ocr_weight, "description": self.description_weight}
 
     def forward(self, text, image=None):
         hidden = text["pooled"]
         if text.get("ocr") is not None:
-            gate = torch.sigmoid(self.ocr_gate).to(hidden.dtype)
             present = text["ocr_present"].unsqueeze(-1).to(hidden.dtype)
-            hidden = hidden + gate * text["ocr"] * present
+            hidden = hidden + self.ocr_weight * text["ocr"] * present
         if text.get("description") is not None:
-            gate = torch.sigmoid(self.description_gate).to(hidden.dtype)
             present = text["description_present"].unsqueeze(-1).to(hidden.dtype)
-            hidden = hidden + gate * text["description"] * present
+            hidden = hidden + self.description_weight * text["description"] * present
         return hidden
 
 
