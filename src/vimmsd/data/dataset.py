@@ -280,20 +280,19 @@ _IMAGE_TEXT_FIELDS = {
 
 
 def _image_field(entry, field):
+    """Text của field theo tên đầu tiên có trong entry. None = bước đó chưa chạy cho ảnh này, "" = không có chữ."""
     if not isinstance(entry, dict):
-        return ""
-    for name in _IMAGE_TEXT_FIELDS[field]:
-        value = entry.get(name)
-        if value:
-            return str(value)
-    return ""
+        return None
+    values = [entry[name] for name in _IMAGE_TEXT_FIELDS[field] if entry.get(name) is not None]
+    return str(next((v for v in values if v), values[0])) if values else None
 
 
 def _load_combined_image_text(path, it_cfg):
     """Đọc `image_preprocessed.json` của dataset Kaggle: {"meta": {...}, "images": {image_key: {ocr, description}}}."""
     if not path.exists():
         raise FileNotFoundError(
-            f"thiếu {path}: attach funalee/vimmsd-data-preprocessed và copy image_preprocessed.json vào thư mục cache"
+            f"thiếu {path}: attach funalee/vimmsd-data-preprocessed, hoặc chạy scripts/build_image_text_dataset.py "
+            "(cuối notebooks/01b); đặt data.image_text.file=null để đọc từng cache"
         )
     raw = json.loads(path.read_text(encoding="utf-8"))
     images = raw.get("images") if isinstance(raw, dict) else None
@@ -305,14 +304,17 @@ def _load_combined_image_text(path, it_cfg):
     texts = {}
     for field, flag in (("ocr", "use_ocr"), ("description", "use_description")):
         if it_cfg.get(flag):
-            texts[field] = {key: _image_field(entry, field) for key, entry in images.items()}
+            # bỏ ảnh có giá trị null để load_records cảnh báo thiếu, thay vì coi như ảnh không có chữ
+            values = {key: _image_field(entry, field) for key, entry in images.items()}
+            texts[field] = {key: v for key, v in values.items() if v is not None}
     meta = raw.get("meta") or {}
     logger.info("đọc %d ảnh từ %s (missing=%s)", len(images), path.name, meta.get("missing"))
     return texts
 
 
 def load_image_texts(cfg):
-    """Đọc cache OCR / mô tả VLM theo `data.image_text` trong config. Trả về {} nếu không dùng."""
+    """Đọc OCR / mô tả VLM theo `data.image_text` trong config, trả về {"ocr": {image_key: text}, ...}.
+    Ưu tiên file gộp `file` (image_preprocessed.json); không có thì đọc từng cache trung gian. Trả về {} nếu không dùng."""
     it_cfg = cfg.data.get("image_text") or {}
     if not (it_cfg.get("use_ocr") or it_cfg.get("use_description")):
         return {}

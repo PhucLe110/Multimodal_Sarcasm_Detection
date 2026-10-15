@@ -254,8 +254,15 @@ def build_image_text_cache(image_paths, out_path, extractor, save_every=100, des
     return cache
 
 
+def merge_image_texts(ocr, description, keys=None):
+    """Gộp 2 cache {image_key: text} thành {image_key: {"ocr": text|None, "description": text|None}}.
+    None nghĩa là ảnh chưa có trong cache đó (khác chuỗi rỗng = đã chạy, ảnh không có chữ)."""
+    keys = list(dict.fromkeys(keys)) if keys is not None else sorted(set(ocr) | set(description))
+    return {k: {"ocr": ocr.get(k), "description": description.get(k)} for k in keys}
+
+
 def shard_cache_name(name, shard, num_shards):
-    """"ocr_v2.json" -> "ocr_v2.shard0of2.json": file cache riêng của từng tiến trình khi chạy song song."""
+    """"ocr.json" -> "ocr.shard0of2.json": file cache riêng của từng tiến trình khi chạy song song."""
     path = Path(name)
     return f"{path.stem}.shard{shard}of{num_shards}{path.suffix}"
 
