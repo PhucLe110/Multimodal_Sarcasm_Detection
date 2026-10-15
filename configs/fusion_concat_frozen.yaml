@@ -7,3 +7,4 @@ model:
     freeze: true
 train:
   lr_head: 1.0e-3   # chỉ train head trên feature cố định nên cần lr cao hơn 1e-4 của base
+  epochs: 20        # head trên feature cố định hội tụ chậm (text_only_frozen còn tăng ở epoch 10); early stopping vẫn dừng sớm

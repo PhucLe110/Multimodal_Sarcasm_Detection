@@ -27,6 +27,7 @@ data:
   labels: [not-sarcasm, text-sarcasm, image-sarcasm, multi-sarcasm]
   val_ratio: 0.1     # val/test chia stratified từ tập train có nhãn
   test_ratio: 0.1
+  split_seed: null  # null = dùng seed; đặt cố định (vd 42) để nhiều seed train dùng chung train/val/test
   max_length: 256           # giới hạn của PhoBERT; p95 độ dài caption sau làm sạch ≈ 251 token
   max_caption_length: 200   # khi có text từ ảnh: caption cắt trước còn tối đa 200 token, phần còn lại cho segment 2
   text:

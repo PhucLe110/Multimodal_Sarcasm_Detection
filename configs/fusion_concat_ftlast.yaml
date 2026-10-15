@@ -6,4 +6,5 @@ model:
   image_encoder:
     unfreeze_last_n: 2
 train:
-  lr_encoder: 2.0e-5   # cho các block được mở lại; head giữ lr 1e-3 như bản frozen
+  lr_encoder: 2.0e-5   # cho các block được mở lại
+  lr_head: 1.0e-4      # như baseline fine-tune; 1e-3 làm overfit sau 2 epoch (train loss 0.075 ở epoch 5)

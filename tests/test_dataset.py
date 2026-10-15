@@ -746,16 +746,31 @@ def test_image_encoder_partial_unfreeze_reaches_pooler(monkeypatch):
     assert isinstance(norm, torch.nn.LayerNorm) and norm.weight.grad is not None
 
 
-@pytest.mark.parametrize("name, modality, text_freeze, image_freeze", [
-    ("text_only_frozen", "text", (True, 0), None),
-    ("image_only_frozen", "image", None, (True, 0)),
-    ("fusion_concat_frozen", "concat", (True, 0), (True, 0)),
-    ("fusion_concat_ftlast", "concat", (True, 2), (True, 2)),
+@pytest.mark.parametrize("name, modality, text_freeze, image_freeze, lr_head", [
+    ("text_only_frozen", "text", (True, 0), None, 1e-3),
+    ("image_only_frozen", "image", None, (True, 0), 1e-3),
+    ("fusion_concat_frozen", "concat", (True, 0), (True, 0), 1e-3),
+    ("fusion_concat_ftlast", "concat", (True, 2), (True, 2), 1e-4),
 ])
-def test_phase4_configs(name, modality, text_freeze, image_freeze):
+def test_phase4_configs(name, modality, text_freeze, image_freeze, lr_head):
     cfg = load_config(f"configs/{name}.yaml", env="local")
     m = cfg.model
-    assert cfg.name == name and m.modality == modality and cfg.train.lr_head == 1e-3
+    assert cfg.name == name and m.modality == modality
+    assert cfg.train.lr_head == lr_head and cfg.train.epochs == 20
     for expected, enc in ((text_freeze, m.text_encoder), (image_freeze, m.image_encoder)):
         if expected is not None:
             assert (enc.freeze, enc.unfreeze_last_n) == expected
+
+
+def test_split_seed_fixes_split_across_train_seeds(fake_data):
+    from vimmsd.data.dataset import load_all_records
+
+    def test_ids(*overrides):
+        cfg = load_config("configs/base.yaml", overrides=[
+            f"paths.local.data_dir={fake_data}", "data.train_json=train.json", "data.train_image_dir=images",
+            "data.public_test_json=missing.json", "data.private_test_json=missing.json", *overrides], env="local")
+        return sorted(r["id"] for r in load_all_records(cfg)["test"])
+
+    # cùng split_seed thì đổi seed train không đổi tập test; không đặt split_seed thì seed quyết định cách chia
+    assert test_ids("seed=1", "data.split_seed=42") == test_ids("seed=2", "data.split_seed=42") == test_ids("seed=42")
+    assert test_ids("seed=1") != test_ids("seed=42")
