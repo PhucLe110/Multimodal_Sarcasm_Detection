@@ -289,8 +289,7 @@ def test_process_all_reads_kaggle_text_cache(tmp_path):
     pre = TextPreprocessor(emoji="keep", word_segment=False, cache_file="text_preprocessed.json")
     path = tmp_path / "text_preprocessed.json"
     path.write_text(json.dumps({
-        "meta": {"pipeline_key": "2c3852f6", "preprocess_version": 2,
-                 "config": {"word_segment_": "vncorenlp"}},
+        "meta": {"pipeline_key": pre.pipeline_key(), "preprocess_version": 2},
         "texts": {"ko đẹp": "ĐÃ CACHE"},
     }, ensure_ascii=False), encoding="utf-8")
     assert pre.process_all(["ko đẹp", "ko đẹp"], cache_dir=tmp_path) == ["ĐÃ CACHE", "ĐÃ CACHE"]
@@ -329,7 +328,7 @@ def test_load_combined_image_preprocessed(fake_data):
         use_ocr=True, use_description=True, dir=None, file="image_preprocessed.json")))
     texts = load_image_texts(cfg)
     assert texts["ocr"]["images/0.jpg"] == "chữ trên ảnh"
-    assert texts["description"]["images/1.jpg"] == ""
+    assert texts["ocr"]["images/1.jpg"] == "" and "images/1.jpg" not in texts["description"]  # null = chưa chạy
 
     records = load_records(fake_data / "train.json", fake_data / "images",
                            {l: i for i, l in enumerate(LABELS)}, texts)
@@ -595,9 +594,49 @@ def test_image_text_cache_batches_and_isolates_failures(tmp_path):
 def test_shard_cache_merge(tmp_path):
     from vimmsd.data.image_text import merge_image_text_caches, shard_cache_name
 
-    assert shard_cache_name("ocr_v2.json", 1, 2) == "ocr_v2.shard1of2.json"
-    (tmp_path / "ocr_v2.json").write_text(json.dumps({"a/0.jpg": "cũ"}), encoding="utf-8")
+    assert shard_cache_name("ocr.json", 1, 2) == "ocr.shard1of2.json"
+    (tmp_path / "ocr.json").write_text(json.dumps({"a/0.jpg": "cũ"}), encoding="utf-8")
     for k, data in enumerate([{"a/1.jpg": "x"}, {"a/2.jpg": "y"}]):
-        (tmp_path / shard_cache_name("ocr_v2.json", k, 2)).write_text(json.dumps(data), encoding="utf-8")
-    merged = merge_image_text_caches(tmp_path / "ocr_v2.json", sorted(tmp_path.glob("ocr_v2.shard*.json")))
+        (tmp_path / shard_cache_name("ocr.json", k, 2)).write_text(json.dumps(data), encoding="utf-8")
+    merged = merge_image_text_caches(tmp_path / "ocr.json", sorted(tmp_path.glob("ocr.shard*.json")))
     assert merged == {"a/0.jpg": "cũ", "a/1.jpg": "x", "a/2.jpg": "y"}
+
+
+def test_merged_image_text_file(fake_data):
+    from vimmsd.data.dataset import load_image_texts
+    from vimmsd.data.image_text import merge_image_texts
+
+    images = merge_image_texts({"images/0.jpg": "chữ", "images/1.jpg": ""}, {"images/0.jpg": "một người"},
+                               keys=["images/0.jpg", "images/1.jpg", "images/2.jpg"])
+    assert images["images/1.jpg"] == {"ocr": "", "description": None}  # "" = không có chữ, None = chưa chạy
+    assert images["images/2.jpg"] == {"ocr": None, "description": None}
+
+    (fake_data / "merged").mkdir()
+    (fake_data / "merged" / "image_text.json").write_text(json.dumps({"meta": {}, "images": images}), encoding="utf-8")
+    cfg = Config(paths=Config(cache_dir=str(fake_data / "cache")), data=Config(image_text=Config(
+        use_ocr=True, use_description=True, dir=str(fake_data / "merged"), file="image_text.json",
+        ocr_cache="ocr.json", description_cache="description.json")))
+    texts = load_image_texts(cfg)
+    assert texts == {"ocr": {"images/0.jpg": "chữ", "images/1.jpg": ""}, "description": {"images/0.jpg": "một người"}}
+    records = load_records(fake_data / "train.json", fake_data / "images", {l: i for i, l in enumerate(LABELS)}, texts)
+    assert records[0]["ocr"] == "chữ" and records[0]["description"] == "một người" and records[1]["description"] == ""
+
+    cfg.data.image_text.file = "missing.json"
+    with pytest.raises(FileNotFoundError):
+        load_image_texts(cfg)
+
+
+def test_named_text_cache_checks_pipeline_key(tmp_path):
+    pre = TextPreprocessor(emoji="keep", word_segment=False, cache_file="text_preprocessed.json")
+    out = pre.process_all(["ko mua đc"], cache_dir=tmp_path)
+    data = json.loads((tmp_path / "text_preprocessed.json").read_text(encoding="utf-8"))
+    assert out == ["không mua được"] and data["meta"]["pipeline_key"] == pre.pipeline_key()
+    assert data["texts"] == {"ko mua đc": "không mua được"}
+
+    # cache tạo bởi pipeline khác (key khác) hoặc không có meta thì bị bỏ qua, không dùng nhầm
+    data["meta"]["pipeline_key"] = "khác"
+    data["texts"]["ko mua đc"] = "kết quả cũ"
+    (tmp_path / "text_preprocessed.json").write_text(json.dumps(data), encoding="utf-8")
+    assert pre.process_all(["ko mua đc"], cache_dir=tmp_path) == ["không mua được"]
+    (tmp_path / "text_preprocessed.json").write_text(json.dumps({"ko mua đc": "kết quả cũ"}), encoding="utf-8")
+    assert pre.process_all(["ko mua đc"], cache_dir=tmp_path) == ["không mua được"]

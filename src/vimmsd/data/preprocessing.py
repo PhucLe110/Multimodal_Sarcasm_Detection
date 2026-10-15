@@ -1,3 +1,4 @@
+import hashlib
 import html
 import json
 import logging
@@ -244,18 +245,22 @@ def clean_text(
 
 
 class TextPreprocessor:
-    """Xử lý hàng loạt và lưu trữ kết quả tiền xử lý văn bản ra đĩa đệm."""
+    """Xử lý hàng loạt và lưu trữ kết quả tiền xử lý văn bản ra đĩa đệm.
+
+    File cache: {"meta": {"pipeline_key": ..., ...}, "texts": {text gốc: text đã xử lý}}. `pipeline_key` là hash của
+    cấu hình, PREPROCESS_VERSION và các bảng tra; khi nạp, cache có key khác (code đã đổi) hoặc không có meta bị bỏ qua
+    và tạo lại. cache_file: tên file trong cache_dir (vd "text_preprocessed.json" của dataset Kaggle)."""
 
     def __init__(self, lowercase=False, normalize_teencode=True, emoji="demojize", word_segment="vncorenlp",
                  include_emoji_explanation=False, cache_file="01a_text_preprocessing.json"):
         self.include_emoji_explanation = include_emoji_explanation
-        self.cache_name = cache_file or "01a_text_preprocessing.json"
         self.kwargs = dict(
             lowercase=lowercase,
             normalize_teencode_=normalize_teencode,
             emoji_mode=emoji,
             word_segment_=_resolve_segmenter(word_segment),
         )
+        self.cache_file = cache_file
 
     @classmethod
     def from_config(cls, text_cfg):
@@ -268,60 +273,53 @@ class TextPreprocessor:
     def __call__(self, text: str) -> str:
         return clean_text(text, **self.kwargs)
 
+    def pipeline_key(self):
+        # gồm cả phiên bản pipeline và các bảng tra: sửa code hay bảng thì cache cũ không còn được dùng
+        state = {"kwargs": self.kwargs, "version": PREPROCESS_VERSION, "teencode": TEENCODE,
+                 "case_sensitive": sorted(CASE_SENSITIVE_TEENCODE), "emoji_vi": EMOJI_VI}
+        return hashlib.md5(json.dumps(state, sort_keys=True, ensure_ascii=False).encode()).hexdigest()[:8]
+
     def _cache_file(self, cache_dir):
-        return Path(cache_dir) / self.cache_name
+        return Path(cache_dir) / self.cache_file
 
-    def _read_cache(self, cache_file):
-        """Đọc cache caption.
+    def load_cache(self, path):
+        """Nạp file cache nếu được tạo bởi đúng pipeline hiện tại, ngược lại trả về {} (kèm cảnh báo)."""
+        path = Path(path)
+        if not path.exists():
+            return {}
+        data = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            raise ValueError(f"{path} không phải object JSON")
+        if isinstance(data.get("texts"), dict) and isinstance(data.get("meta"), dict):
+            if data["meta"].get("pipeline_key") == self.pipeline_key():
+                logger.info("đọc %d caption từ %s (pipeline_key=%s)", len(data["texts"]), path.name, self.pipeline_key())
+                return dict(data["texts"])
+            logger.warning("bỏ qua %s: tạo bởi pipeline khác (key %s, hiện tại %s), sẽ tiền xử lý lại",
+                           path, data["meta"].get("pipeline_key"), self.pipeline_key())
+            return {}
+        logger.warning("bỏ qua %s: không có meta.pipeline_key để kiểm tra, sẽ tiền xử lý lại", path)
+        return {}
 
-        Hai dạng đều hợp lệ:
-        - file phẳng {caption gốc: caption đã xử lý}, notebook 01a ghi ra `01a_text_preprocessing.json`
-        - file dataset Kaggle `text_preprocessed.json`: {"meta": {...}, "texts": {caption gốc: caption đã xử lý}}
-        """
-        raw = json.loads(cache_file.read_text(encoding="utf-8"))
-        if not isinstance(raw, dict):
-            raise ValueError(f"{cache_file} không phải object JSON")
-        if isinstance(raw.get("texts"), dict):
-            meta = raw.get("meta") or {}
-            version = meta.get("preprocess_version")
-            if version is not None and version != PREPROCESS_VERSION:
-                logger.warning("bỏ %s: preprocess_version %s khác code %s",
-                               cache_file.name, version, PREPROCESS_VERSION)
-                return {}, raw
-            logger.info("đọc %d caption từ %s (pipeline_key=%s, preprocess_version=%s)",
-                        len(raw["texts"]), cache_file.name, meta.get("pipeline_key"), version)
-            return dict(raw["texts"]), raw
-        if any(not isinstance(value, str) for value in raw.values()):
-            raise ValueError(f"{cache_file} không phải cache caption (cần map chuỗi, hoặc meta.texts)")
-        logger.info("đọc %d caption từ %s", len(raw), cache_file.name)
-        return dict(raw), None
+    def save_cache(self, path, cache):
+        meta = {"pipeline_key": self.pipeline_key(), "preprocess_version": PREPROCESS_VERSION, "config": self.kwargs}
+        path = Path(path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            path.write_text(json.dumps({"meta": meta, "texts": cache}, ensure_ascii=False), encoding="utf-8")
+        except OSError as e:
+            raise OSError(f"không ghi được {path}. Copy cache sang thư mục ghi được "
+                          "(trên Kaggle: /kaggle/working/cache) trước khi train.") from e
 
     def process_all(self, texts, cache_dir=None):
-        cache, wrapper = {}, None
         cache_file = self._cache_file(cache_dir) if cache_dir else None
-        if cache_file and cache_file.exists():
-            cache, wrapper = self._read_cache(cache_file)
-        elif cache_file:
-            logger.info("chưa có %s, sẽ xử lý caption rồi ghi file mới", cache_file)
+        cache = self.load_cache(cache_file) if cache_file else {}
 
         missing = [t for t in dict.fromkeys(texts) if t not in cache]
         for t in missing:
             cache[t] = self(t)
 
         if cache_file and missing:
-            payload = wrapper if wrapper is not None else cache
-            if wrapper is not None:
-                wrapper["texts"] = cache
-                meta = wrapper.setdefault("meta", {})
-                meta["preprocess_version"] = PREPROCESS_VERSION
-            cache_file.parent.mkdir(parents=True, exist_ok=True)
-            try:
-                cache_file.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-            except OSError as e:
-                raise OSError(
-                    f"không ghi được {cache_file}. Copy cache sang thư mục ghi được "
-                    "(trên Kaggle: /kaggle/working/cache) trước khi train."
-                ) from e
+            self.save_cache(cache_file, cache)
         return [cache[t] for t in texts]
 
     def process_record(self, record: dict, emoji_explanation_text: str = "") -> dict:
