@@ -659,16 +659,22 @@ def test_freeze_encoder_opens_only_last_blocks(kind):
 
     model = _tiny_encoders()[kind]
     blocks = freeze_encoder(model, freeze=True, unfreeze_last_n=2)
-    trainable = {n.split(".weight")[0].split(".bias")[0] for n, p in model.named_parameters() if p.requires_grad}
-    layer_prefix = {"roberta": "encoder.layer.", "clip": "vision_model.encoder.layers.", "vit": "encoder.layer."}[kind]
-    assert any(n.startswith(layer_prefix + "1.") for n in trainable)
-    assert any(n.startswith(layer_prefix + "2.") for n in trainable)
-    assert not any(n.startswith((layer_prefix + "0.", "embeddings", "vision_model.embeddings")) for n in trainable)
+
+    def trainable(module):
+        return all(p.requires_grad for p in module.parameters())
+
+    def frozen(module):
+        return not any(p.requires_grad for p in module.parameters())
+
+    root = getattr(model, "vision_model", model)  # transformers cũ bọc CLIP trong vision_model
+    layers = root.encoder.layers if kind == "clip" else root.encoder.layer
+    assert trainable(layers[1]) and trainable(layers[2])
+    assert frozen(layers[0]) and frozen(root.embeddings)
     # LayerNorm sau block cuối: CLIP post_layernorm (pooler_output), ViT layernorm; RoBERTa không có
-    final_norm = {"roberta": None, "clip": "vision_model.post_layernorm", "vit": "layernorm"}[kind]
+    final_norm = {"roberta": None, "clip": getattr(root, "post_layernorm", None), "vit": getattr(root, "layernorm", None)}[kind]
     assert len(blocks) == 2 + (final_norm is not None)
-    if final_norm:
-        assert final_norm in trainable
+    if kind != "roberta":
+        assert final_norm is not None and trainable(final_norm)
 
     assert freeze_encoder(model, freeze=True) == []
     assert not any(p.requires_grad for p in model.parameters())
@@ -719,7 +725,7 @@ def test_image_encoder_partial_unfreeze_reaches_pooler(monkeypatch):
 
     enc.train()
     enc(torch.randn(2, 3, 32, 32))["pooled"].sum().backward()
-    vm = enc.model.vision_model
+    vm = getattr(enc.model, "vision_model", enc.model)  # transformers cũ bọc trong vision_model
     assert vm.post_layernorm.weight.grad is not None and vm.encoder.layers[2].mlp.fc1.weight.grad is not None
     assert vm.encoder.layers[0].mlp.fc1.weight.grad is None and vm.embeddings.patch_embedding.weight.grad is None
 

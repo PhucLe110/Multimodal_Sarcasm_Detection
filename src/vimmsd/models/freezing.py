@@ -6,12 +6,15 @@ def last_blocks(model, n):
 
     CLIP: `post_layernorm` tạo ra `pooler_output`; ViT: `layernorm` tạo ra `last_hidden_state`.
     RoBERTa không có LayerNorm chung sau encoder (mỗi block tự có)."""
-    if hasattr(model, "vision_model"):  # CLIPVisionModel
-        layers, final_norm = model.vision_model.encoder.layers, model.vision_model.post_layernorm
-    elif hasattr(model, "encoder") and hasattr(model.encoder, "layer"):  # RobertaModel (PhoBERT), ViTModel
-        layers, final_norm = model.encoder.layer, getattr(model, "layernorm", None)
-    else:
+    # CLIPVisionModel: transformers cũ bọc trong `vision_model`, bản mới đặt embeddings/encoder/post_layernorm ở ngoài
+    root = getattr(model, "vision_model", model)
+    encoder = getattr(root, "encoder", None)
+    layers = getattr(encoder, "layers", None)  # CLIP
+    if layers is None:
+        layers = getattr(encoder, "layer", None)  # RobertaModel (PhoBERT), ViTModel
+    if layers is None:
         raise ValueError(f"không tìm được các block transformer của {type(model).__name__}")
+    final_norm = next((getattr(root, name) for name in ("post_layernorm", "layernorm") if hasattr(root, name)), None)
     if not 0 < n <= len(layers):
         raise ValueError(f"unfreeze_last_n phải trong [1, {len(layers)}], nhận được {n}")
     blocks = list(layers[-n:])
