@@ -653,28 +653,41 @@ def _tiny_encoders():
     }
 
 
+def _block_list(model):
+    lists = [m for m in model.modules() if isinstance(m, torch.nn.ModuleList)]
+    assert len(lists) == 1  # mỗi encoder tí hon chỉ có 1 danh sách block, tên khác nhau giữa các bản transformers
+    return lists[0]
+
+
+def _grads_after_backward(model, kind):
+    if kind == "roberta":
+        out = model(input_ids=torch.randint(5, 50, (2, 6)))
+    else:
+        out = model(pixel_values=torch.randn(2, 3, 32, 32))
+    # vector được đem đi concat: CLIP pooler_output (qua post_layernorm), ViT/RoBERTa token đầu
+    pooled = out.pooler_output if kind == "clip" else out.last_hidden_state[:, 0]
+    pooled.sum().backward()
+
+
 @pytest.mark.parametrize("kind", ["roberta", "clip", "vit"])
 def test_freeze_encoder_opens_only_last_blocks(kind):
     from vimmsd.models.freezing import freeze_encoder
 
     model = _tiny_encoders()[kind]
     blocks = freeze_encoder(model, freeze=True, unfreeze_last_n=2)
+    layers = _block_list(model)
+    assert all(p.requires_grad for block in layers[1:] for p in block.parameters())
+    assert not any(p.requires_grad for p in layers[0].parameters())
+    # 2 block + LayerNorm cuối (CLIP post_layernorm, ViT layernorm); RoBERTa không có LayerNorm chung sau encoder
+    norms = blocks[2:]
+    assert len(norms) == (0 if kind == "roberta" else 1) and all(isinstance(m, torch.nn.LayerNorm) for m in norms)
 
-    def trainable(module):
-        return all(p.requires_grad for p in module.parameters())
-
-    def frozen(module):
-        return not any(p.requires_grad for p in module.parameters())
-
-    root = getattr(model, "vision_model", model)  # transformers cũ bọc CLIP trong vision_model
-    layers = root.encoder.layers if kind == "clip" else root.encoder.layer
-    assert trainable(layers[1]) and trainable(layers[2])
-    assert frozen(layers[0]) and frozen(root.embeddings)
-    # LayerNorm sau block cuối: CLIP post_layernorm (pooler_output), ViT layernorm; RoBERTa không có
-    final_norm = {"roberta": None, "clip": getattr(root, "post_layernorm", None), "vit": getattr(root, "layernorm", None)}[kind]
-    assert len(blocks) == 2 + (final_norm is not None)
-    if kind != "roberta":
-        assert final_norm is not None and trainable(final_norm)
+    # tham số được mở đều nằm trên đường tới vector pooled, phần đóng băng không nhận gradient
+    _grads_after_backward(model, kind)
+    for name, p in model.named_parameters():
+        if kind == "vit" and "pooler" in name:
+            continue  # pooler của ViT không dùng (lấy token CLS), luôn đóng băng
+        assert (p.grad is not None) == p.requires_grad, name
 
     assert freeze_encoder(model, freeze=True) == []
     assert not any(p.requires_grad for p in model.parameters())
@@ -725,9 +738,12 @@ def test_image_encoder_partial_unfreeze_reaches_pooler(monkeypatch):
 
     enc.train()
     enc(torch.randn(2, 3, 32, 32))["pooled"].sum().backward()
-    vm = getattr(enc.model, "vision_model", enc.model)  # transformers cũ bọc trong vision_model
-    assert vm.post_layernorm.weight.grad is not None and vm.encoder.layers[2].mlp.fc1.weight.grad is not None
-    assert vm.encoder.layers[0].mlp.fc1.weight.grad is None and vm.embeddings.patch_embedding.weight.grad is None
+    layers = _block_list(enc.model)
+    assert all(p.grad is not None for p in layers[2].parameters())
+    assert all(p.grad is None for p in layers[0].parameters())
+    # post_layernorm (tạo pooler_output) cũng được mở và nhận gradient
+    norm = enc.unfrozen_blocks[-1]
+    assert isinstance(norm, torch.nn.LayerNorm) and norm.weight.grad is not None
 
 
 @pytest.mark.parametrize("name, modality, text_freeze, image_freeze", [
