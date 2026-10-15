@@ -5,7 +5,8 @@ import logging
 from datetime import datetime
 from pathlib import Path
 
-from vimmsd.data.dataset import ViMMSDCollator, build_dataloaders, build_datasets, class_counts
+from vimmsd.data.dataset import (ViMMSDCollator, build_dataloaders, build_datasets, class_counts,
+                                 stage_preprocessed_cache)
 from vimmsd.models.classifier import MODALITY_NEEDS, build_model
 from vimmsd.training.losses import build_loss
 from vimmsd.training.metrics import format_metrics, plot_confusion_matrix
@@ -41,6 +42,7 @@ def main():
     log = logging.getLogger("train")
 
     cfg = load_config(args.config, args.override)
+    stage_preprocessed_cache(cfg)
     set_seed(cfg.seed)
     commit = git_commit()
     output_dir = Path(cfg.paths.output_dir) / cfg.name
@@ -51,8 +53,9 @@ def main():
     model = build_model(cfg)
     needs_text, needs_image = MODALITY_NEEDS[cfg.model.modality]
     datasets = build_datasets(cfg, needs_text, needs_image)
+    aux_max_length = (cfg.data.get("image_text") or {}).get("aux_max_length") or 96
     collator = ViMMSDCollator(model.tokenizer, model.image_processor, cfg.data.max_length,
-                              cfg.data.get("max_caption_length"))
+                              cfg.data.get("max_caption_length"), aux_max_length)
     loaders = build_dataloaders(cfg, datasets, collator)
     counts = class_counts(datasets["train"], len(cfg.data.labels))
     log.info("train %d | val %d | test %d | phân bố lớp train %s",
@@ -63,15 +66,28 @@ def main():
     summary = trainer.fit()
 
     trainer.load_best()
+    aux_note = ""
+    if hasattr(trainer.model.fusion, "weights"):
+        weights = trainer.model.fusion.weights()
+        (output_dir / "aux_weights.json").write_text(json.dumps(weights, indent=2))
+        aux_note = (f"caption_weight={weights['caption']:.1f} ocr_weight={weights['ocr']:.3f} "
+                    f"description_weight={weights['description']:.3f}")
+        log.info("trọng số feature: %s", aux_note)
     test_metrics, _ = trainer.evaluate("test")
     log.info("test (best checkpoint)\n%s", format_metrics(test_metrics))
     (output_dir / "test_metrics.json").write_text(json.dumps(test_metrics, indent=2))
     plot_confusion_matrix(test_metrics["confusion_matrix"], cfg.data.labels,
                           output_dir / "confusion_matrix_test.png", title=cfg.name)
 
+    note = args.note
+    if aux_note:
+        note = f"{note} | {aux_note}" if note else aux_note
+    if summary.get("peak_vram_gb") is not None:
+        vram = f"peak VRAM {summary['peak_vram_gb']:.2f} GB"
+        note = f"{note} | {vram}" if note else vram
     row = (f"| {datetime.now():%Y-%m-%d} | `{cfg.name}` | `{commit}` | {cfg.env} | "
            f"{summary['best_val_macro_f1']:.4f} | {test_metrics['macro_f1']:.4f} | "
-           f"{summary['train_minutes']:.1f} | {args.note} |")
+           f"{summary['train_minutes']:.1f} | {note} |")
     # trên Kaggle/Colab repo là bản clone tạm, nên ghi thêm vào output_dir để copy dòng này về reports/results.md
     append_result(output_dir / "results_row.md", row)
     if cfg.env == "local":

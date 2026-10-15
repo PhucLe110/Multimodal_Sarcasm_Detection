@@ -6,6 +6,7 @@ from vimmsd.models.text_encoder import TextEncoder
 
 MODALITY_NEEDS = {
     "text": (True, False),
+    "text_aux": (True, False),
     "image": (False, True),
     "concat": (True, True),
     "cross_attn": (True, True),
@@ -49,6 +50,12 @@ class SarcasmClassifier(nn.Module):
         text = image = None
         if self.text_encoder is not None:
             text = self.text_encoder(batch["input_ids"], batch["attention_mask"])
+            if "ocr_input_ids" in batch:
+                text["ocr"] = self.text_encoder(batch["ocr_input_ids"], batch["ocr_attention_mask"])["pooled"]
+                text["ocr_present"] = batch["ocr_present"]
+                text["description"] = self.text_encoder(
+                    batch["description_input_ids"], batch["description_attention_mask"])["pooled"]
+                text["description_present"] = batch["description_present"]
         if self.image_encoder is not None:
             image = self.image_encoder(batch["pixel_values"])
         return text, image

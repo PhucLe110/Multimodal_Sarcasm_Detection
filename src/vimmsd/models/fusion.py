@@ -16,6 +16,37 @@ class TextOnlyFusion(nn.Module):
         return text["pooled"]
 
 
+class TextAuxFusion(nn.Module):
+    """Caption là feature chính, hệ số cố định 1.
+
+    OCR đứng thứ hai, mô tả VLM đứng thứ ba. Hai hệ số phụ cố định, không học,
+    để lần chạy thực sự dùng hai nguồn này thay vì để gate kẹt ở 0.1.
+    h = h_caption + ocr_weight * h_ocr + description_weight * h_vlm.
+    Mẫu không có OCR hoặc không có mô tả thì feature phụ đó bằng 0.
+    """
+
+    def __init__(self, text_dim, ocr_weight=0.5, description_weight=0.25, **_):
+        super().__init__()
+        self.out_dim = text_dim
+        self.ocr_weight = float(ocr_weight)
+        self.description_weight = float(description_weight)
+        if not 0 <= self.description_weight <= self.ocr_weight <= 1:
+            raise ValueError("cần 0 <= description_weight <= ocr_weight <= 1, caption giữ hệ số 1")
+
+    def weights(self):
+        return {"caption": 1.0, "ocr": self.ocr_weight, "description": self.description_weight}
+
+    def forward(self, text, image=None):
+        hidden = text["pooled"]
+        if text.get("ocr") is not None:
+            present = text["ocr_present"].unsqueeze(-1).to(hidden.dtype)
+            hidden = hidden + self.ocr_weight * text["ocr"] * present
+        if text.get("description") is not None:
+            present = text["description_present"].unsqueeze(-1).to(hidden.dtype)
+            hidden = hidden + self.description_weight * text["description"] * present
+        return hidden
+
+
 class ImageOnlyFusion(nn.Module):
     def __init__(self, image_dim, **_):
         super().__init__()
@@ -97,6 +128,7 @@ class CrossAttentionFusion(nn.Module):
 
 FUSIONS = {
     "text": TextOnlyFusion,
+    "text_aux": TextAuxFusion,
     "image": ImageOnlyFusion,
     "concat": ConcatFusion,
     "cross_attn": CrossAttentionFusion,
