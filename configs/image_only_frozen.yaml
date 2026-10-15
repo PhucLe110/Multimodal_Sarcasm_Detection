@@ -1,0 +1,7 @@
+# Phase 4, mốc so sánh: CLIP vision đóng băng, chỉ train MLP head (cùng chế độ với fusion_concat_frozen).
+inherit: image_only.yaml
+model:
+  image_encoder:
+    freeze: true
+train:
+  lr_head: 1.0e-3   # chỉ train head trên feature cố định nên cần lr cao hơn 1e-4 của base

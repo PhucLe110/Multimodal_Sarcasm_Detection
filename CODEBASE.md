@@ -32,6 +32,10 @@ IE403/
 │   ├── text_only.yaml         # Tuần 3
 │   ├── image_only.yaml        # Tuần 3
 │   ├── fusion_concat.yaml     # Tuần 4
+│   ├── fusion_concat_frozen.yaml # Tuần 4: đóng băng cả 2 encoder, chỉ train MLP head
+│   ├── fusion_concat_ftlast.yaml # Tuần 4: như trên + fine-tune nhẹ 2 block cuối mỗi encoder
+│   ├── text_only_frozen.yaml  # Tuần 4: mốc so sánh, PhoBERT đóng băng
+│   ├── image_only_frozen.yaml # Tuần 4: mốc so sánh, CLIP đóng băng
 │   ├── fusion_cross_attn.yaml # Tuần 5
 │   └── fusion_cross_attn_focal.yaml # Tuần 5 (+ xử lý imbalance)
 │
@@ -52,6 +56,7 @@ IE403/
 │       ├── models/
 │       │   ├── text_encoder.py    # wrapper PhoBERT
 │       │   ├── image_encoder.py   # wrapper CLIP/ViT
+│       │   ├── freezing.py        # đóng băng encoder, mở lại N block cuối (unfreeze_last_n)
 │       │   ├── fusion.py          # ConcatFusion, CrossAttentionFusion
 │       │   └── classifier.py      # head phân loại 4 lớp, lắp ghép encoder + fusion
 │       │

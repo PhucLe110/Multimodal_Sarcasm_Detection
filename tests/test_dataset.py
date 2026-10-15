@@ -640,3 +640,100 @@ def test_named_text_cache_checks_pipeline_key(tmp_path):
     assert pre.process_all(["ko mua đc"], cache_dir=tmp_path) == ["không mua được"]
     (tmp_path / "text_preprocessed.json").write_text(json.dumps({"ko mua đc": "kết quả cũ"}), encoding="utf-8")
     assert pre.process_all(["ko mua đc"], cache_dir=tmp_path) == ["không mua được"]
+
+
+def _tiny_encoders():
+    from transformers import CLIPVisionConfig, CLIPVisionModel, RobertaConfig, RobertaModel, ViTConfig, ViTModel
+
+    small = dict(hidden_size=16, num_hidden_layers=3, num_attention_heads=2, intermediate_size=32)
+    return {
+        "roberta": RobertaModel(RobertaConfig(vocab_size=50, max_position_embeddings=40, **small)),
+        "clip": CLIPVisionModel(CLIPVisionConfig(image_size=32, patch_size=16, **small)),
+        "vit": ViTModel(ViTConfig(image_size=32, patch_size=16, **small)),
+    }
+
+
+@pytest.mark.parametrize("kind", ["roberta", "clip", "vit"])
+def test_freeze_encoder_opens_only_last_blocks(kind):
+    from vimmsd.models.freezing import freeze_encoder
+
+    model = _tiny_encoders()[kind]
+    blocks = freeze_encoder(model, freeze=True, unfreeze_last_n=2)
+    trainable = {n.split(".weight")[0].split(".bias")[0] for n, p in model.named_parameters() if p.requires_grad}
+    layer_prefix = {"roberta": "encoder.layer.", "clip": "vision_model.encoder.layers.", "vit": "encoder.layer."}[kind]
+    assert any(n.startswith(layer_prefix + "1.") for n in trainable)
+    assert any(n.startswith(layer_prefix + "2.") for n in trainable)
+    assert not any(n.startswith((layer_prefix + "0.", "embeddings", "vision_model.embeddings")) for n in trainable)
+    # LayerNorm sau block cuối: CLIP post_layernorm (pooler_output), ViT layernorm; RoBERTa không có
+    final_norm = {"roberta": None, "clip": "vision_model.post_layernorm", "vit": "layernorm"}[kind]
+    assert len(blocks) == 2 + (final_norm is not None)
+    if final_norm:
+        assert final_norm in trainable
+
+    assert freeze_encoder(model, freeze=True) == []
+    assert not any(p.requires_grad for p in model.parameters())
+
+
+def test_freeze_encoder_rejects_bad_unfreeze_last_n():
+    from vimmsd.models.freezing import freeze_encoder
+
+    model = _tiny_encoders()["roberta"]
+    with pytest.raises(ValueError):
+        freeze_encoder(model, freeze=True, unfreeze_last_n=4)  # chỉ có 3 block
+    with pytest.raises(ValueError):
+        freeze_encoder(model, freeze=False, unfreeze_last_n=1)  # freeze: false đã fine-tune toàn bộ
+    assert freeze_encoder(model, freeze=False) == []
+    assert all(p.requires_grad for p in model.parameters())
+
+
+def test_text_encoder_partial_unfreeze_train_mode_and_grads(monkeypatch):
+    from vimmsd.models import text_encoder
+
+    tiny = _tiny_encoders()["roberta"]
+    monkeypatch.setattr(text_encoder.AutoModel, "from_pretrained", lambda name: tiny)
+    monkeypatch.setattr(text_encoder.AutoTokenizer, "from_pretrained", lambda name: None)
+    enc = text_encoder.TextEncoder("tiny", freeze=True, unfreeze_last_n=1)
+
+    enc.train()
+    layers = enc.model.encoder.layer
+    assert layers[2].training and not layers[0].training and not enc.model.embeddings.training
+    enc.eval()
+    assert not layers[2].training
+
+    enc.train()
+    ids = torch.randint(5, 50, (2, 6))
+    enc(ids, torch.ones_like(ids))["pooled"].sum().backward()
+    assert all(p.grad is not None for p in layers[2].parameters())
+    assert all(p.grad is None for p in layers[0].parameters())
+    assert all(p.grad is None for p in enc.model.embeddings.parameters())
+
+
+def test_image_encoder_partial_unfreeze_reaches_pooler(monkeypatch):
+    from vimmsd.models import image_encoder
+
+    tiny = _tiny_encoders()["clip"]
+    monkeypatch.setattr(image_encoder.AutoConfig, "from_pretrained", lambda name: tiny.config)
+    monkeypatch.setattr(image_encoder.CLIPVisionModel, "from_pretrained", lambda name: tiny)
+    monkeypatch.setattr(image_encoder.AutoImageProcessor, "from_pretrained", lambda name: None)
+    enc = image_encoder.ImageEncoder("tiny", freeze=True, unfreeze_last_n=1)
+
+    enc.train()
+    enc(torch.randn(2, 3, 32, 32))["pooled"].sum().backward()
+    vm = enc.model.vision_model
+    assert vm.post_layernorm.weight.grad is not None and vm.encoder.layers[2].mlp.fc1.weight.grad is not None
+    assert vm.encoder.layers[0].mlp.fc1.weight.grad is None and vm.embeddings.patch_embedding.weight.grad is None
+
+
+@pytest.mark.parametrize("name, modality, text_freeze, image_freeze", [
+    ("text_only_frozen", "text", (True, 0), None),
+    ("image_only_frozen", "image", None, (True, 0)),
+    ("fusion_concat_frozen", "concat", (True, 0), (True, 0)),
+    ("fusion_concat_ftlast", "concat", (True, 2), (True, 2)),
+])
+def test_phase4_configs(name, modality, text_freeze, image_freeze):
+    cfg = load_config(f"configs/{name}.yaml", env="local")
+    m = cfg.model
+    assert cfg.name == name and m.modality == modality and cfg.train.lr_head == 1e-3
+    for expected, enc in ((text_freeze, m.text_encoder), (image_freeze, m.image_encoder)):
+        if expected is not None:
+            assert (enc.freeze, enc.unfreeze_last_n) == expected

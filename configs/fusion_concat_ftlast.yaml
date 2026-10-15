@@ -1,0 +1,9 @@
+# Phase 4: như fusion_concat_frozen nhưng fine-tune nhẹ 2 block cuối của mỗi encoder (CLIP thêm post_layernorm).
+inherit: fusion_concat_frozen.yaml
+model:
+  text_encoder:
+    unfreeze_last_n: 2
+  image_encoder:
+    unfreeze_last_n: 2
+train:
+  lr_encoder: 2.0e-5   # cho các block được mở lại; head giữ lr 1e-3 như bản frozen
