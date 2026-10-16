@@ -774,3 +774,62 @@ def test_split_seed_fixes_split_across_train_seeds(fake_data):
     # cùng split_seed thì đổi seed train không đổi tập test; không đặt split_seed thì seed quyết định cách chia
     assert test_ids("seed=1", "data.split_seed=42") == test_ids("seed=2", "data.split_seed=42") == test_ids("seed=42")
     assert test_ids("seed=1") != test_ids("seed=42")
+
+
+def test_concat_fusion_projection_and_modality_dropout():
+    from vimmsd.models.fusion import ConcatFusion
+
+    B, H = 64, 32
+    text = {"pooled": torch.randn(B, H) + 1.0}
+    image = {"pooled": torch.randn(B, H) * 10}
+    plain = ConcatFusion(text_dim=H, image_dim=H)
+    assert torch.equal(plain(text, image), torch.cat([text["pooled"], image["pooled"]], -1))  # mặc định như Phase 4
+
+    torch.manual_seed(0)
+    fusion = ConcatFusion(text_dim=H, image_dim=H, proj_dim=8, image_drop_prob=0.5, text_drop_prob=0.5)
+    assert fusion.out_dim == 16
+    out = fusion.train()(text, image)
+    t_zero, i_zero = (out[:, :8] == 0).all(-1), (out[:, 8:] == 0).all(-1)
+    assert i_zero.any() and t_zero.any() and not (t_zero & i_zero).any()  # không bỏ cả 2 modality của 1 mẫu
+    out_eval = fusion.eval()(text, image)
+    assert not (out_eval[:, 8:] == 0).all(-1).any()  # eval không bỏ gì
+    with pytest.raises(ValueError):
+        ConcatFusion(text_dim=H, image_dim=H, image_drop_prob=1.0)
+
+
+@pytest.mark.parametrize("name, modality, class_weight, proj_dim", [
+    ("fusion_concat_frozen_reg", "concat", None, 256),
+    ("fusion_concat_frozen_reg_cw", "concat", "sqrt_inverse", 256),
+    ("text_only_frozen_cw", "text", "sqrt_inverse", None),
+])
+def test_phase4_reg_configs(name, modality, class_weight, proj_dim):
+    cfg = load_config(f"configs/{name}.yaml", env="local")
+    assert cfg.model.modality == modality and cfg.loss.get("class_weight") == class_weight
+    assert (cfg.model.get("fusion") or {}).get("proj_dim") == proj_dim
+    assert cfg.model.text_encoder.freeze and cfg.train.lr_head == 1e-3
+
+
+def test_run_on_gpus_queue_logs_and_failures(tmp_path):
+    import sys
+
+    from vimmsd.utils.gpu_queue import Job, run_on_gpus
+
+    def job(name, code, check=None):
+        return Job(name, [[sys.executable, "-c", code]], tmp_path / f"{name}.log", check=check)
+
+    show_gpu = "import os; print('INFO epoch 1 gpu', os.environ.get('CUDA_VISIBLE_DEVICES'))"
+    jobs = [job("a", show_gpu), job("b", show_gpu), job("c", "raise SystemExit(3)"),
+            job("d", "pass", check=lambda: "thiếu test_metrics.json")]
+    done = run_on_gpus(jobs, num_gpus=2, summary_pattern=r"INFO epoch")
+    assert [j.name for j in done] == ["a", "b", "c", "d"]
+    status = {j.name: j.error for j in done}
+    assert status["a"] is None and status["b"] is None
+    assert status["c"] == "mã thoát 3" and status["d"] == "thiếu test_metrics.json"
+    used = {(tmp_path / f"{n}.log").read_text().split()[-1] for n in "ab"}
+    assert used <= {"0", "1"}
+    # không có GPU: chạy tuần tự, không đặt CUDA_VISIBLE_DEVICES
+    import os
+
+    cpu = run_on_gpus([job("e", show_gpu)], num_gpus=0)
+    assert cpu[0].error is None
+    assert (tmp_path / "e.log").read_text().split()[-1] == str(os.environ.get("CUDA_VISIBLE_DEVICES"))

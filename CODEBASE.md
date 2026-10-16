@@ -36,6 +36,9 @@ IE403/
 │   ├── fusion_concat_ftlast.yaml # Tuần 4: như trên + fine-tune nhẹ 2 block cuối mỗi encoder
 │   ├── text_only_frozen.yaml  # Tuần 4: mốc so sánh, PhoBERT đóng băng
 │   ├── image_only_frozen.yaml # Tuần 4: mốc so sánh, CLIP đóng băng
+│   ├── text_only_frozen_cw.yaml # Tuần 4: text_only_frozen + class weight sqrt_inverse
+│   ├── fusion_concat_frozen_reg.yaml # Tuần 4: concat đóng băng + LayerNorm/projection mỗi nhánh, dropout ảnh, modality dropout
+│   ├── fusion_concat_frozen_reg_cw.yaml # Tuần 4: như trên + class weight sqrt_inverse
 │   ├── fusion_cross_attn.yaml # Tuần 5
 │   └── fusion_cross_attn_focal.yaml # Tuần 5 (+ xử lý imbalance)
 │
@@ -74,7 +77,8 @@ IE403/
 │           ├── config.py          # load/parse YAML config thành object, chọn paths theo môi trường
 │           ├── env.py             # detect_env(): "kaggle" / "colab" / "local"
 │           ├── seed.py            # set seed cho reproducibility
-│           └── checkpoint.py      # save/load checkpoint (tương thích Drive/Kaggle)
+│           ├── checkpoint.py      # save/load checkpoint (tương thích Drive/Kaggle)
+│           └── gpu_queue.py       # chạy nhiều run song song, mỗi GPU một run (Kaggle T4 x2)
 │
 ├── scripts/
 │   ├── download_data.py     # tải ViMMSD bằng Kaggle API (chỉ dùng khi chạy local)
