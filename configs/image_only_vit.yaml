@@ -3,6 +3,6 @@ model:
   modality: image
   image_encoder:
     name: google/vit-base-patch16-224
-    freeze: false   # fine-tune toan bo encoder ViT cho bai toan image-only
+    freeze: false   # fine-tune toàn bộ encoder ViT cho bài toán image-only
 train:
   lr_encoder: 1.0e-5
