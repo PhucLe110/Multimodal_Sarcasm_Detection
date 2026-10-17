@@ -137,13 +137,9 @@ def test_clean_ocr_drops_junk_lines_and_caption_duplicates():
     assert clean_ocr("", "abc") == ""
 
 
-def test_text_cache_key_depends_on_pipeline_version(tmp_path, monkeypatch):
-    import vimmsd.data.preprocessing as pp
-
+def test_text_cache_file_has_fixed_name(tmp_path):
     pre = TextPreprocessor(emoji="keep", word_segment=False)
-    before = pre._cache_file(tmp_path)
-    monkeypatch.setattr(pp, "PREPROCESS_VERSION", pp.PREPROCESS_VERSION + 1)
-    assert pre._cache_file(tmp_path) != before
+    assert pre._cache_file(tmp_path).name == "01a_text_preprocessing.json"
 
 
 def test_clean_text_empty_and_whitespace():
@@ -169,6 +165,40 @@ def test_clean_text_word_segment_vncorenlp():
         pytest.skip("thiếu Java hoặc model VnCoreNLP")
     out = clean_text("Học sinh sinh viên dùng mạng xã hội", emoji_mode="keep", word_segment_="vncorenlp")
     assert out == "Học_sinh sinh_viên dùng mạng xã_hội"
+
+
+def test_text_aux_fusion_keeps_caption_as_main():
+    from vimmsd.models.fusion import TextAuxFusion
+
+    fusion = TextAuxFusion(4, ocr_weight=0.5, description_weight=0.25)
+    caption = torch.ones(2, 4)
+    ocr = torch.full((2, 4), 10.0)
+    description = torch.full((2, 4), 5.0)
+    present = torch.tensor([1.0, 0.0])
+    out = fusion({
+        "pooled": caption,
+        "ocr": ocr,
+        "ocr_present": present,
+        "description": description,
+        "description_present": present,
+    })
+    assert fusion.weights() == {"caption": 1.0, "ocr": 0.5, "description": 0.25}
+    assert torch.allclose(out[0], caption[0] + 0.5 * ocr[0] + 0.25 * description[0])
+    assert torch.allclose(out[1], caption[1])
+    with pytest.raises(ValueError):
+        TextAuxFusion(4, ocr_weight=0.2, description_weight=0.5)
+
+
+def test_text_aux_collator_does_not_merge_fields():
+    items = [
+        {"id": "0", "label": 0, "text": "caption một", "ocr": "chữ OCR", "description": ""},
+        {"id": "1", "label": 1, "text": "caption hai", "ocr": "", "description": "một mô tả"},
+    ]
+    batch = ViMMSDCollator(StubTokenizer(), max_length=16, aux_max_length=8)(items)
+    assert "input_ids" in batch and "ocr_input_ids" in batch and "description_input_ids" in batch
+    assert batch["ocr_present"].tolist() == [1.0, 0.0]
+    assert batch["description_present"].tolist() == [0.0, 1.0]
+    assert batch["ocr_input_ids"].shape[0] == 2
 
 
 def test_collator_clips_caption_before_only_second():
@@ -197,12 +227,123 @@ def test_load_and_split(fake_data):
     assert not {r["id"] for r in train} & {r["id"] for r in test}
 
 
+def test_from_config_ignores_cache_dir():
+    cfg = load_config("configs/base.yaml")
+    pre = TextPreprocessor.from_config(cfg.data.text)
+    assert pre.kwargs["emoji_mode"] == "demojize"
+    pre = TextPreprocessor.from_config({
+        "emoji": "keep", "word_segment": False, "cache_dir": "attached/cache",
+    })
+    assert pre.kwargs["emoji_mode"] == "keep"
+    assert "cache_dir" not in pre.kwargs
+
+
+def test_build_text_cache_is_reused(fake_data):
+    from vimmsd.data.dataset import build_text_cache, text_cache_dir
+
+    cache = fake_data / "cache"
+    cfg = load_config("configs/base.yaml", overrides=[
+        f"paths.local.data_dir={fake_data}",
+        f"paths.local.cache_dir={cache}",
+        "data.train_json=train.json",
+        "data.public_test_json=missing-public.json",
+        "data.private_test_json=missing-private.json",
+        "data.text.word_segment=false",
+        "data.text.emoji=keep",
+    ], env="local")
+    assert text_cache_dir(cfg) == str(cache)
+    cache_file, n_captions, used = build_text_cache(cfg)
+    assert n_captions == 40 and used == ["train.json"] and cache_file.exists()
+
+    records = load_records(fake_data / "train.json", fake_data / "images", {l: i for i, l in enumerate(LABELS)})
+    ds = ViMMSDDataset(records, text_preprocessor=TextPreprocessor.from_config(cfg.data.text), cache_dir=cache)
+    assert "không" in ds.texts[0]
+    # lần sau chỉ đọc file, không ghi thêm key mới
+    before = cache_file.read_text(encoding="utf-8")
+    TextPreprocessor.from_config(cfg.data.text).process_all([r["caption"] for r in records], cache_dir=cache)
+    assert cache_file.read_text(encoding="utf-8") == before
+
+
+def test_stage_preprocessed_cache_copies_json_not_csv(tmp_path):
+    from vimmsd.data.dataset import stage_preprocessed_cache
+
+    src = tmp_path / "input" / "vimmsd-data-preprocessed"
+    src.mkdir(parents=True)
+    (src / "text_preprocessed.json").write_text('{"texts": {}}', encoding="utf-8")
+    (src / "image_preprocessed.json").write_text('{"images": {}}', encoding="utf-8")
+    (src / "image_preprocessed.csv").write_text("split,id\n", encoding="utf-8")
+    dest = tmp_path / "cache"
+    cfg = Config(
+        paths=Config(cache_dir=str(dest)),
+        data=Config(
+            text=Config(cache_file="text_preprocessed.json"),
+            image_text=Config(use_ocr=True, use_description=True, file="image_preprocessed.json"),
+        ),
+    )
+    copied = stage_preprocessed_cache(cfg, search_root=tmp_path / "input")
+    assert [p.name for p in copied] == ["text_preprocessed.json", "image_preprocessed.json"]
+    assert not (dest / "image_preprocessed.csv").exists()
+
+
+def test_process_all_reads_kaggle_text_cache(tmp_path):
+    pre = TextPreprocessor(emoji="keep", word_segment=False, cache_file="text_preprocessed.json")
+    path = tmp_path / "text_preprocessed.json"
+    path.write_text(json.dumps({
+        "meta": {"pipeline_key": pre.pipeline_key(), "preprocess_version": 2},
+        "texts": {"ko đẹp": "ĐÃ CACHE"},
+    }, ensure_ascii=False), encoding="utf-8")
+    assert pre.process_all(["ko đẹp", "ko đẹp"], cache_dir=tmp_path) == ["ĐÃ CACHE", "ĐÃ CACHE"]
+    # cache đủ thì không ghi lại
+    assert "ĐÃ CACHE" in path.read_text(encoding="utf-8")
+
+
+def test_process_all_ignores_cache_when_preprocess_version_differs(tmp_path):
+    pre = TextPreprocessor(emoji="keep", word_segment=False, cache_file="text_preprocessed.json")
+    (tmp_path / "text_preprocessed.json").write_text(json.dumps({
+        "meta": {"preprocess_version": 1},
+        "texts": {"ko": "ĐÃ CACHE"},
+    }), encoding="utf-8")
+    assert pre.process_all(["ko"], cache_dir=tmp_path) == ["không"]
+
+
+def test_from_config_uses_cache_file_name(tmp_path):
+    pre = TextPreprocessor.from_config({
+        "emoji": "keep", "word_segment": False, "cache_file": "text_preprocessed.json", "cache_dir": "ignored",
+    })
+    assert pre._cache_file(tmp_path).name == "text_preprocessed.json"
+    assert "cache_dir" not in pre.kwargs
+
+
+def test_load_combined_image_preprocessed(fake_data):
+    from vimmsd.data.dataset import load_image_texts
+
+    cache = fake_data / "cache"
+    cache.mkdir()
+    (cache / "image_preprocessed.json").write_text(json.dumps({
+        "meta": {"num_images": 1, "missing": {"ocr": 0, "description": 0}},
+        "images": {"images/0.jpg": {"ocr": "chữ trên ảnh", "description": "một người"},
+                   "images/1.jpg": {"ocr": "", "description": None}},
+    }, ensure_ascii=False), encoding="utf-8")
+    cfg = Config(paths=Config(cache_dir=str(cache)), data=Config(image_text=Config(
+        use_ocr=True, use_description=True, dir=None, file="image_preprocessed.json")))
+    texts = load_image_texts(cfg)
+    assert texts["ocr"]["images/0.jpg"] == "chữ trên ảnh"
+    assert texts["ocr"]["images/1.jpg"] == "" and "images/1.jpg" not in texts["description"]  # null = chưa chạy
+
+    records = load_records(fake_data / "train.json", fake_data / "images",
+                           {l: i for i, l in enumerate(LABELS)}, texts)
+    ds = ViMMSDDataset(records[:2], text_preprocessor=TextPreprocessor(emoji="keep", word_segment=False),
+                       load_image=False, use_image_text=True, cache_dir=cache)
+    assert ds[0]["image_text"] == "Chữ trong ảnh: chữ trên ảnh. Mô tả ảnh: một người"
+    assert ds[1]["image_text"] == ""
+
+
 def test_batch_shapes(fake_data):
     records = load_records(fake_data / "train.json", fake_data / "images", {l: i for i, l in enumerate(LABELS)})
     pre = TextPreprocessor(emoji="keep", word_segment=False)
     ds = ViMMSDDataset(records, text_preprocessor=pre, cache_dir=fake_data / "cache")
     assert "không" in ds.texts[0] and "#" not in ds.texts[0]
-    assert list((fake_data / "cache").glob("text_cache_*.json"))
+    assert (fake_data / "cache" / "01a_text_preprocessing.json").exists()
 
     batch = ViMMSDCollator(StubTokenizer(), StubImageProcessor())([ds[i] for i in range(8)])
     assert batch["input_ids"].shape == batch["attention_mask"].shape
@@ -453,9 +594,49 @@ def test_image_text_cache_batches_and_isolates_failures(tmp_path):
 def test_shard_cache_merge(tmp_path):
     from vimmsd.data.image_text import merge_image_text_caches, shard_cache_name
 
-    assert shard_cache_name("ocr_v2.json", 1, 2) == "ocr_v2.shard1of2.json"
-    (tmp_path / "ocr_v2.json").write_text(json.dumps({"a/0.jpg": "cũ"}), encoding="utf-8")
+    assert shard_cache_name("ocr.json", 1, 2) == "ocr.shard1of2.json"
+    (tmp_path / "ocr.json").write_text(json.dumps({"a/0.jpg": "cũ"}), encoding="utf-8")
     for k, data in enumerate([{"a/1.jpg": "x"}, {"a/2.jpg": "y"}]):
-        (tmp_path / shard_cache_name("ocr_v2.json", k, 2)).write_text(json.dumps(data), encoding="utf-8")
-    merged = merge_image_text_caches(tmp_path / "ocr_v2.json", sorted(tmp_path.glob("ocr_v2.shard*.json")))
+        (tmp_path / shard_cache_name("ocr.json", k, 2)).write_text(json.dumps(data), encoding="utf-8")
+    merged = merge_image_text_caches(tmp_path / "ocr.json", sorted(tmp_path.glob("ocr.shard*.json")))
     assert merged == {"a/0.jpg": "cũ", "a/1.jpg": "x", "a/2.jpg": "y"}
+
+
+def test_merged_image_text_file(fake_data):
+    from vimmsd.data.dataset import load_image_texts
+    from vimmsd.data.image_text import merge_image_texts
+
+    images = merge_image_texts({"images/0.jpg": "chữ", "images/1.jpg": ""}, {"images/0.jpg": "một người"},
+                               keys=["images/0.jpg", "images/1.jpg", "images/2.jpg"])
+    assert images["images/1.jpg"] == {"ocr": "", "description": None}  # "" = không có chữ, None = chưa chạy
+    assert images["images/2.jpg"] == {"ocr": None, "description": None}
+
+    (fake_data / "merged").mkdir()
+    (fake_data / "merged" / "image_text.json").write_text(json.dumps({"meta": {}, "images": images}), encoding="utf-8")
+    cfg = Config(paths=Config(cache_dir=str(fake_data / "cache")), data=Config(image_text=Config(
+        use_ocr=True, use_description=True, dir=str(fake_data / "merged"), file="image_text.json",
+        ocr_cache="ocr.json", description_cache="description.json")))
+    texts = load_image_texts(cfg)
+    assert texts == {"ocr": {"images/0.jpg": "chữ", "images/1.jpg": ""}, "description": {"images/0.jpg": "một người"}}
+    records = load_records(fake_data / "train.json", fake_data / "images", {l: i for i, l in enumerate(LABELS)}, texts)
+    assert records[0]["ocr"] == "chữ" and records[0]["description"] == "một người" and records[1]["description"] == ""
+
+    cfg.data.image_text.file = "missing.json"
+    with pytest.raises(FileNotFoundError):
+        load_image_texts(cfg)
+
+
+def test_named_text_cache_checks_pipeline_key(tmp_path):
+    pre = TextPreprocessor(emoji="keep", word_segment=False, cache_file="text_preprocessed.json")
+    out = pre.process_all(["ko mua đc"], cache_dir=tmp_path)
+    data = json.loads((tmp_path / "text_preprocessed.json").read_text(encoding="utf-8"))
+    assert out == ["không mua được"] and data["meta"]["pipeline_key"] == pre.pipeline_key()
+    assert data["texts"] == {"ko mua đc": "không mua được"}
+
+    # cache tạo bởi pipeline khác (key khác) hoặc không có meta thì bị bỏ qua, không dùng nhầm
+    data["meta"]["pipeline_key"] = "khác"
+    data["texts"]["ko mua đc"] = "kết quả cũ"
+    (tmp_path / "text_preprocessed.json").write_text(json.dumps(data), encoding="utf-8")
+    assert pre.process_all(["ko mua đc"], cache_dir=tmp_path) == ["không mua được"]
+    (tmp_path / "text_preprocessed.json").write_text(json.dumps({"ko mua đc": "kết quả cũ"}), encoding="utf-8")
+    assert pre.process_all(["ko mua đc"], cache_dir=tmp_path) == ["không mua được"]

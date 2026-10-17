@@ -1,3 +1,7 @@
 inherit: base.yaml
 model:
   modality: text
+data:
+  text:
+    # dataset Kaggle funalee/vimmsd-data-preprocessed, không dùng file phẳng của notebook 01a
+    cache_file: text_preprocessed.json

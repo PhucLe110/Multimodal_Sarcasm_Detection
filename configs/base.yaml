@@ -34,6 +34,8 @@ data:
     normalize_teencode: true
     emoji: demojize   # keep | remove | demojize (emoji phổ biến sang tiếng Việt, còn lại tên tiếng Anh)
     word_segment: vncorenlp   # vncorenlp (PhoBERT, cần Java) | underthesea | none (ViSoBERT)
+    cache_dir: null   # null = paths.cache_dir. Notebook train trên Kaggle: /kaggle/input/<output 01a>/cache
+    cache_file: text_preprocessed.json  # tên file trong cache_dir; meta.pipeline_key sai thì tự bỏ qua, tạo lại
   image_resize: pad    # pad (letterbox vuông, giữ toàn bộ ảnh) | crop (center-crop của processor, như code cũ)
   image_augment: false # crop 90-100% + chỉnh sáng/tương phản, chỉ khi train
   sampler: random     # random | weighted (oversampling lớp hiếm)
@@ -42,10 +44,11 @@ data:
   image_text:
     use_ocr: false
     use_description: false
-    dir: null                           # null = paths.cache_dir; Kaggle: thư mục output notebook 01b đã attach
-    # đặt tên theo phiên bản: đổi model/prompt thì tăng số, không ghi đè cache cũ
-    ocr_cache: ocr_v2.json                     # PaddleOCR phát hiện + VietOCR vgg_seq2seq, mỗi dòng một hàng
-    description_cache: vlm_description_v1.json # Vintern-1B, prompt mô tả trung tính
+    dir: null                 # null = paths.cache_dir; Kaggle: thư mục chứa image_preprocessed.json (dataset đã attach)
+    file: image_preprocessed.json  # file gộp OCR + mô tả (scripts/build_image_text_dataset.py); null = đọc 2 cache dưới
+    # cache trung gian của notebook 01b, mỗi bước một file; đổi model OCR/VLM thì dùng thư mục cache mới
+    ocr_cache: ocr.json
+    description_cache: description.json
 
 model:
   modality: concat    # text | image | concat | cross_attn

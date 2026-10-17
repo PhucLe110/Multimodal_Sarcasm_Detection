@@ -1,6 +1,7 @@
 import hashlib
 import html
 import json
+import logging
 import os
 import re
 import unicodedata
@@ -10,6 +11,8 @@ from functools import lru_cache
 from pathlib import Path
 
 from vimmsd.data.emoji_vi import EMOJI_VI
+
+logger = logging.getLogger(__name__)
 
 # Tăng mỗi khi sửa code làm sạch: là một phần của key cache, để không dùng lại kết quả của pipeline cũ.
 PREPROCESS_VERSION = 2
@@ -166,6 +169,7 @@ VNCORENLP_URL = "https://raw.githubusercontent.com/vncorenlp/VnCoreNLP/master/"
 VNCORENLP_FILES = ("VnCoreNLP-1.2.jar", "models/wordsegmenter/vi-vocab", "models/wordsegmenter/wordsegmenter.rdr")
 
 
+
 @lru_cache(maxsize=1)
 def _vncorenlp():
     """RDRSegmenter của VnCoreNLP, công cụ tách từ PhoBERT dùng khi pretrain. Cần Java (JDK/JRE >= 8).
@@ -241,41 +245,92 @@ def clean_text(
 
 
 class TextPreprocessor:
-    """Xử lý hàng loạt và lưu trữ kết quả tiền xử lý văn bản ra đĩa đệm."""
+    """Xử lý hàng loạt và lưu trữ kết quả tiền xử lý văn bản ra đĩa đệm.
 
-    def __init__(self, lowercase=False, normalize_teencode=True, emoji="demojize", word_segment="vncorenlp"):
+    File cache: {"meta": {"pipeline_key": ..., ...}, "texts": {text gốc: text đã xử lý}}. `pipeline_key` là hash của
+    cấu hình, PREPROCESS_VERSION và các bảng tra; khi nạp, cache có key khác (code đã đổi) hoặc không có meta bị bỏ qua
+    và tạo lại. cache_file: tên file trong cache_dir (vd "text_preprocessed.json" của dataset Kaggle)."""
+
+    def __init__(self, lowercase=False, normalize_teencode=True, emoji="demojize", word_segment="vncorenlp",
+                 include_emoji_explanation=False, cache_file="01a_text_preprocessing.json"):
+        self.include_emoji_explanation = include_emoji_explanation
         self.kwargs = dict(
             lowercase=lowercase,
             normalize_teencode_=normalize_teencode,
             emoji_mode=emoji,
             word_segment_=_resolve_segmenter(word_segment),
         )
+        self.cache_file = cache_file
 
     @classmethod
     def from_config(cls, text_cfg):
-        return cls(**dict(text_cfg))
+        raw = dict(text_cfg)
+        # cache_dir / cache_file là đường dẫn file cache, không phải tham số chuẩn hóa câu
+        allowed = {"lowercase", "normalize_teencode", "emoji", "word_segment", "include_emoji_explanation"}
+        return cls(cache_file=raw.get("cache_file") or "01a_text_preprocessing.json",
+                   **{k: raw[k] for k in allowed if k in raw})
 
     def __call__(self, text: str) -> str:
         return clean_text(text, **self.kwargs)
 
-    def _cache_file(self, cache_dir):
-        # key gồm cả phiên bản pipeline và các bảng tra: sửa code hay bảng thì cache cũ không còn được dùng
+    def pipeline_key(self):
+        # gồm cả phiên bản pipeline và các bảng tra: sửa code hay bảng thì cache cũ không còn được dùng
         state = {"kwargs": self.kwargs, "version": PREPROCESS_VERSION, "teencode": TEENCODE,
                  "case_sensitive": sorted(CASE_SENSITIVE_TEENCODE), "emoji_vi": EMOJI_VI}
-        key = hashlib.md5(json.dumps(state, sort_keys=True, ensure_ascii=False).encode()).hexdigest()[:8]
-        return Path(cache_dir) / f"text_cache_{key}.json"
+        return hashlib.md5(json.dumps(state, sort_keys=True, ensure_ascii=False).encode()).hexdigest()[:8]
+
+    def _cache_file(self, cache_dir):
+        return Path(cache_dir) / self.cache_file
+
+    def load_cache(self, path):
+        """Nạp file cache nếu được tạo bởi đúng pipeline hiện tại, ngược lại trả về {} (kèm cảnh báo)."""
+        path = Path(path)
+        if not path.exists():
+            return {}
+        data = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            raise ValueError(f"{path} không phải object JSON")
+        if isinstance(data.get("texts"), dict) and isinstance(data.get("meta"), dict):
+            if data["meta"].get("pipeline_key") == self.pipeline_key():
+                logger.info("đọc %d caption từ %s (pipeline_key=%s)", len(data["texts"]), path.name, self.pipeline_key())
+                return dict(data["texts"])
+            logger.warning("bỏ qua %s: tạo bởi pipeline khác (key %s, hiện tại %s), sẽ tiền xử lý lại",
+                           path, data["meta"].get("pipeline_key"), self.pipeline_key())
+            return {}
+        logger.warning("bỏ qua %s: không có meta.pipeline_key để kiểm tra, sẽ tiền xử lý lại", path)
+        return {}
+
+    def save_cache(self, path, cache):
+        meta = {"pipeline_key": self.pipeline_key(), "preprocess_version": PREPROCESS_VERSION, "config": self.kwargs}
+        path = Path(path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            path.write_text(json.dumps({"meta": meta, "texts": cache}, ensure_ascii=False), encoding="utf-8")
+        except OSError as e:
+            raise OSError(f"không ghi được {path}. Copy cache sang thư mục ghi được "
+                          "(trên Kaggle: /kaggle/working/cache) trước khi train.") from e
 
     def process_all(self, texts, cache_dir=None):
-        cache = {}
         cache_file = self._cache_file(cache_dir) if cache_dir else None
-        if cache_file and cache_file.exists():
-            cache = json.loads(cache_file.read_text(encoding="utf-8"))
+        cache = self.load_cache(cache_file) if cache_file else {}
 
         missing = [t for t in dict.fromkeys(texts) if t not in cache]
         for t in missing:
             cache[t] = self(t)
 
         if cache_file and missing:
-            cache_file.parent.mkdir(parents=True, exist_ok=True)
-            cache_file.write_text(json.dumps(cache, ensure_ascii=False), encoding="utf-8")
+            self.save_cache(cache_file, cache)
         return [cache[t] for t in texts]
+
+    def process_record(self, record: dict, emoji_explanation_text: str = "") -> dict:
+        processed = dict(record)
+        processed["caption_processed"] = self(record.get("caption", ""))
+        if self.include_emoji_explanation:
+            processed["emoji_explanation"] = emoji_explanation_text.strip()
+        return processed
+
+    def process_records(self, records, emoji_annotations=None):
+        annotations = emoji_annotations or {}
+        if isinstance(records, dict):
+            return {key: self.process_record(value, annotations.get(str(key), "")) for key, value in records.items()}
+        return [self.process_record(value, annotations.get(str(index), "")) for index, value in enumerate(records)]

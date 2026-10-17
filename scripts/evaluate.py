@@ -10,7 +10,7 @@ from pathlib import Path
 import pandas as pd
 import torch
 
-from vimmsd.data.dataset import ViMMSDCollator, build_dataloaders, build_datasets
+from vimmsd.data.dataset import ViMMSDCollator, build_dataloaders, build_datasets, stage_preprocessed_cache
 from vimmsd.models.classifier import MODALITY_NEEDS, build_model
 from vimmsd.training.metrics import compute_metrics, format_metrics, plot_confusion_matrix
 from vimmsd.training.trainer import predict
@@ -29,6 +29,7 @@ def main():
     logging.getLogger("httpx").setLevel(logging.WARNING)
 
     cfg = load_config(args.config, args.override)
+    stage_preprocessed_cache(cfg)
     output_dir = Path(cfg.paths.output_dir) / cfg.name
     ckpt = Path(args.checkpoint) if args.checkpoint else output_dir / "best.pt"
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -41,8 +42,9 @@ def main():
     datasets = build_datasets(cfg, needs_text, needs_image, splits=(args.split,))
     if args.split not in datasets:
         raise FileNotFoundError(f"không tìm thấy dữ liệu cho split {args.split}")
+    aux_max_length = (cfg.data.get("image_text") or {}).get("aux_max_length") or 96
     collator = ViMMSDCollator(model.tokenizer, model.image_processor, cfg.data.max_length,
-                              cfg.data.get("max_caption_length"))
+                              cfg.data.get("max_caption_length"), aux_max_length)
     loader = build_dataloaders(cfg, datasets, collator)[args.split]
     out = predict(model, loader, device, use_amp=cfg.train.amp and device.type == "cuda")
 

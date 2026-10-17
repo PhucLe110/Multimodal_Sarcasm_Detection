@@ -1,8 +1,14 @@
-# Chỉ dùng PhoBERT, nhưng input gồm caption + chữ trong ảnh (OCR) + mô tả ảnh (VLM):
-# đo xem "đọc ảnh thành text" thay thế được image encoder tới mức nào.
+# Model 3.2: caption hệ số 1, OCR 0.5, mô tả VLM 0.25. Ba feature riêng, không gộp chuỗi.
 inherit: text_only.yaml
+model:
+  modality: text_aux
+  fusion:
+    ocr_weight: 0.5
+    description_weight: 0.25
 data:
   max_length: 256
   image_text:
     use_ocr: true
     use_description: true
+    file: image_preprocessed.json
+    aux_max_length: 96
