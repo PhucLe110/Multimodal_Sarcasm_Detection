@@ -833,3 +833,44 @@ def test_run_on_gpus_queue_logs_and_failures(tmp_path):
     cpu = run_on_gpus([job("e", show_gpu)], num_gpus=0)
     assert cpu[0].error is None
     assert (tmp_path / "e.log").read_text().split()[-1] == str(os.environ.get("CUDA_VISIBLE_DEVICES"))
+
+
+def test_checkpoint_skips_frozen_params(tmp_path):
+    from vimmsd.utils.checkpoint import load_checkpoint, save_checkpoint
+
+    def make():
+        torch.manual_seed(0)  # "encoder" giống nhau như khi tải cùng weight pretrained
+        model = torch.nn.Sequential(torch.nn.Linear(8, 8), torch.nn.Linear(8, 4))
+        model[0].requires_grad_(False)
+        return model
+
+    model = make()
+    torch.nn.init.constant_(model[1].weight, 0.5)
+    save_checkpoint(tmp_path / "best.pt", model, epoch=3)
+    saved = torch.load(tmp_path / "best.pt", weights_only=False)
+    assert set(saved["model"]) == {"1.weight", "1.bias"} and saved["frozen_omitted"]
+
+    fresh = make()
+    extra = load_checkpoint(tmp_path / "best.pt", fresh)
+    assert extra == {"epoch": 3}
+    assert torch.equal(fresh[1].weight, model[1].weight) and torch.equal(fresh[0].weight, model[0].weight)
+
+    # checkpoint cũ lưu đầy đủ vẫn load được; thiếu parameter đang train thì báo lỗi
+    torch.save({"model": model.state_dict()}, tmp_path / "full.pt")
+    load_checkpoint(tmp_path / "full.pt", make())
+    unfrozen = make().requires_grad_(True)
+    with pytest.raises(RuntimeError, match="không khớp"):
+        load_checkpoint(tmp_path / "best.pt", unfrozen)
+
+
+def test_run_on_gpus_reports_errors_outside_subprocess(tmp_path):
+    import sys
+
+    from vimmsd.utils.gpu_queue import Job, run_on_gpus
+
+    (tmp_path / "file").write_text("")
+    bad = Job("bad", [[sys.executable, "-c", "pass"]], tmp_path / "file" / "run.log")  # không tạo được thư mục log
+    good = Job("good", [[sys.executable, "-c", "pass"]], tmp_path / "good.log")
+    done = run_on_gpus([bad, good], num_gpus=1)
+    assert [j.name for j in done] == ["bad", "good"]
+    assert bad.error and good.error is None

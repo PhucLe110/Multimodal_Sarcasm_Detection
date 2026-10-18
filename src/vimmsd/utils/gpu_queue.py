@@ -20,6 +20,7 @@ class Job:
     commands: list            # mỗi lệnh là list[str]; lệnh sau chỉ chạy khi lệnh trước thành công
     log: Path
     check: object = None      # hàm () -> str | None, chạy sau khi xong mọi lệnh; trả về chuỗi lỗi nếu job hỏng
+                              # (có thể dọn file tạm ở đây, vd xoá last.pt khi run đã xong)
     returncode: int = field(default=None, init=False)
     error: str = field(default=None, init=False)
     minutes: float = field(default=None, init=False)
@@ -53,27 +54,34 @@ def run_on_gpus(jobs, num_gpus, summary_pattern=None, tail_on_error=30):
                 job = pending.get_nowait()
             except queue.Empty:
                 return
-            job.log.parent.mkdir(parents=True, exist_ok=True)
             say(f"{tag} bắt đầu {job.name} (log: {job.log})")
             start = time.time()
-            with open(job.log, "w", encoding="utf-8") as log:
-                for cmd in job.commands:
-                    log.write(f"$ {' '.join(map(str, cmd))}\n")
-                    log.flush()
-                    proc = subprocess.Popen([str(c) for c in cmd], stdout=log, stderr=subprocess.STDOUT, env=env)
-                    with lock:
-                        running[gpu] = proc
-                    job.returncode = proc.wait()
-                    with lock:
-                        running.pop(gpu, None)
-                    if job.returncode != 0 or stop.is_set():
-                        break
+            try:
+                job.log.parent.mkdir(parents=True, exist_ok=True)
+                with open(job.log, "w", encoding="utf-8") as log:
+                    for cmd in job.commands:
+                        log.write(f"$ {' '.join(map(str, cmd))}\n")
+                        log.flush()
+                        proc = subprocess.Popen([str(c) for c in cmd], stdout=log, stderr=subprocess.STDOUT, env=env)
+                        with lock:
+                            running[gpu] = proc
+                        job.returncode = proc.wait()
+                        with lock:
+                            running.pop(gpu, None)
+                        if job.returncode != 0 or stop.is_set():
+                            break
+                if job.returncode != 0:
+                    job.error = f"mã thoát {job.returncode}"
+                elif job.check is not None:
+                    job.error = job.check()
+            except Exception as e:  # vd hết dung lượng đĩa khi tạo thư mục/log: báo lỗi job, luồng vẫn chạy job tiếp theo
+                job.returncode = -1 if job.returncode is None else job.returncode
+                job.error = f"{type(e).__name__}: {e}"
             job.minutes = (time.time() - start) / 60
-            if job.returncode != 0:
-                job.error = f"mã thoát {job.returncode}"
-            elif job.check is not None:
-                job.error = job.check()
-            text = job.log.read_text(encoding="utf-8", errors="ignore").splitlines()
+            try:
+                text = job.log.read_text(encoding="utf-8", errors="ignore").splitlines()
+            except OSError:
+                text = []
             if job.error:
                 say(f"{tag} LỖI {job.name}: {job.error}, {tail_on_error} dòng log cuối:\n" + "\n".join(text[-tail_on_error:]))
             else:
