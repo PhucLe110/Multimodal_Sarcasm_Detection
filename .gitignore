@@ -28,9 +28,6 @@ venv/
 kaggle.json
 .env
 
-# docs
-docs/
-
 # other
 reports/dataset_report.html
 reports/environment_setup.md
