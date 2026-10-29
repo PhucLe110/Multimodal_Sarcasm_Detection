@@ -357,6 +357,8 @@ def test_fusion_shapes(modality):
     mask = torch.ones(B, Lt, dtype=torch.bool)
     mask[0, 4:] = False
     text = {"tokens": torch.randn(B, Lt, Ht), "mask": mask, "pooled": torch.randn(B, Ht)}
+    for field in ("ocr", "description"):  # luồng chữ từ ảnh của text_aux / multistream
+        text[field], text[f"{field}_present"] = torch.randn(B, Ht), torch.ones(B)
     image = {"tokens": torch.randn(B, Li, Hi), "pooled": torch.randn(B, Hi)}
     fusion = FUSIONS[modality](text_dim=Ht, image_dim=Hi, hidden_dim=64, num_heads=4, dropout=0.0)
     out = fusion(text, image)
@@ -768,7 +770,8 @@ def test_split_seed_fixes_split_across_train_seeds(fake_data):
     def test_ids(*overrides):
         cfg = load_config("configs/base.yaml", overrides=[
             f"paths.local.data_dir={fake_data}", "data.train_json=train.json", "data.train_image_dir=images",
-            "data.public_test_json=missing.json", "data.private_test_json=missing.json", *overrides], env="local")
+            "data.public_test_json=missing.json", "data.private_test_json=missing.json", "data.split=random",
+            *overrides], env="local")
         return sorted(r["id"] for r in load_all_records(cfg)["test"])
 
     # cùng split_seed thì đổi seed train không đổi tập test; không đặt split_seed thì seed quyết định cách chia
@@ -874,3 +877,116 @@ def test_run_on_gpus_reports_errors_outside_subprocess(tmp_path):
     done = run_on_gpus([bad, good], num_gpus=1)
     assert [j.name for j in done] == ["bad", "good"]
     assert bad.error and good.error is None
+
+
+def test_multistream_fusion_streams_flags_and_dropout():
+    from vimmsd.models.fusion import MultiStreamFusion
+
+    B, H, P = 6, 32, 8
+    present = torch.tensor([1.0, 0.0, 1.0, 0.0, 1.0, 1.0])
+    text = {"pooled": torch.randn(B, H), "ocr": torch.randn(B, H), "ocr_present": present,
+            "description": torch.randn(B, H), "description_present": torch.ones(B)}
+    image = {"pooled": torch.randn(B, H)}
+
+    # không CLIP: caption + 2 luồng + 2 cặp tương tác + 2 cờ
+    fusion = MultiStreamFusion(text_dim=H, proj_dim=P).eval()
+    out = fusion(text, image=None)
+    assert fusion.out_dim == out.shape[1] == 3 * P + 2 * 2 * P + 2
+    ocr, ocr_mul, ocr_abs = out[:, P:2 * P], out[:, 3 * P:4 * P], out[:, 4 * P:5 * P]
+    absent = present == 0
+    assert (ocr[absent] == 0).all() and (ocr_mul[absent] == 0).all() and (ocr_abs[absent] == 0).all()
+    assert (ocr[~absent] != 0).any(-1).all()
+    assert torch.equal(out[:, -2], present) and torch.equal(out[:, -1], torch.ones(B))
+
+    # có CLIP, một luồng, không tương tác
+    clip = MultiStreamFusion(text_dim=H, image_dim=H, proj_dim=P, streams=["ocr"], interactions=False)
+    assert clip.eval()(text, image).shape[1] == clip.out_dim == 3 * P + 1
+
+    # modality dropout chỉ khi train, luồng bị bỏ coi như vắng mặt (cờ = 0); caption không bao giờ bị bỏ
+    torch.manual_seed(0)
+    drop = MultiStreamFusion(text_dim=H, proj_dim=P, streams=["description"], aux_drop_prob=0.5).train()
+    out = drop({**text, "pooled": text["pooled"].repeat(20, 1), "description": text["description"].repeat(20, 1),
+                "description_present": torch.ones(B * 20)})
+    flag = out[:, -1]
+    assert 0 < flag.sum() < B * 20 and (out[flag == 0, P:2 * P] == 0).all()
+    assert (out[:, :P] != 0).any(-1).all()
+
+    with pytest.raises(ValueError):
+        MultiStreamFusion(text_dim=H, streams=["caption"])
+    with pytest.raises(ValueError, match="thiếu luồng"):
+        MultiStreamFusion(text_dim=H, proj_dim=P).eval()({"pooled": torch.randn(B, H)})
+
+
+@pytest.mark.parametrize("name, modality, streams, use_ocr, use_description, needs_image", [
+    ("fusion_multistream_frozen", "multistream", ["ocr", "description"], True, True, False),
+    ("fusion_multistream_clip_frozen", "multistream_clip", ["ocr", "description"], True, True, True),
+    ("fusion_multistream_ocr_frozen", "multistream", ["ocr"], True, False, False),
+    ("fusion_multistream_desc_frozen", "multistream", ["description"], False, True, False),
+])
+def test_multistream_configs(name, modality, streams, use_ocr, use_description, needs_image):
+    from vimmsd.data.dataset import separates_image_text
+    from vimmsd.models.classifier import MODALITY_NEEDS
+
+    cfg = load_config(f"configs/{name}.yaml", env="local")
+    it = cfg.data.image_text
+    assert cfg.model.modality == modality and list(cfg.model.fusion.streams) == streams
+    assert (it.use_ocr, it.use_description, it.file) == (use_ocr, use_description, "image_preprocessed.json")
+    assert separates_image_text(cfg) and MODALITY_NEEDS[modality] == (True, needs_image)
+    assert cfg.model.text_encoder.freeze and cfg.train.lr_head == 1e-3
+
+
+def test_multistream_end_to_end_collator_to_logits(monkeypatch):
+    from vimmsd.models import text_encoder
+    from vimmsd.models.classifier import SarcasmClassifier
+
+    tiny = _tiny_encoders()["roberta"]
+    monkeypatch.setattr(text_encoder.AutoModel, "from_pretrained", lambda name: tiny)
+    monkeypatch.setattr(text_encoder.AutoTokenizer, "from_pretrained", lambda name: None)
+    enc = text_encoder.TextEncoder("tiny", freeze=True)
+    model = SarcasmClassifier("multistream", enc, None, {"proj_dim": 8, "aux_drop_prob": 0.3},
+                              num_classes=4, head_hidden=16, dropout=0.0)
+
+    items = [
+        {"id": "0", "label": 0, "text": "caption một", "ocr": "chữ trong ảnh", "description": "một mô tả ảnh"},
+        {"id": "1", "label": 2, "text": "caption hai dài hơn", "ocr": "", "description": "mô tả khác"},
+    ]
+    batch = ViMMSDCollator(StubTokenizer(), max_length=16, aux_max_length=8)(items)
+    model.train()
+    logits = model(batch)
+    assert logits.shape == (2, 4)
+    torch.nn.functional.cross_entropy(logits, batch["labels"]).backward()
+    # PhoBERT đóng băng: chỉ fusion + head nhận gradient
+    assert all(p.grad is None for p in enc.parameters())
+    assert all(p.grad is not None for p in model.head.parameters())
+    assert model.fusion.out_dim == 3 * 8 + 2 * 2 * 8 + 2
+
+
+def test_official_split_uses_labeled_public_and_private_test(fake_data):
+    from vimmsd.data.dataset import load_all_records
+
+    for name, start in (("public", 100), ("private", 200)):
+        ann = {str(i): {"image": "0.jpg", "caption": f"{name} {i}", "label": None} for i in range(start, start + 8)}
+        (fake_data / f"{name}.json").write_text(json.dumps(ann, ensure_ascii=False), encoding="utf-8")
+        ref = {"results": {sid: LABELS[int(sid) % 4] for sid in ann}, "phase": name}
+        (fake_data / f"{name}-ref.json").write_text(json.dumps(ref), encoding="utf-8")
+
+    def load(*overrides):
+        cfg = load_config("configs/base.yaml", overrides=[
+            f"paths.local.data_dir={fake_data}", "data.train_json=train.json", "data.train_image_dir=images",
+            "data.public_test_json=public.json", "data.public_test_labels=public-ref.json",
+            "data.public_test_image_dir=images", "data.private_test_json=private.json",
+            "data.private_test_labels=private-ref.json", "data.private_test_image_dir=images", *overrides],
+            env="local")
+        return load_all_records(cfg)
+
+    splits = load()
+    # train giữ nguyên toàn bộ, val/test là public/private test với nhãn lấy từ file ref
+    assert len(splits["train"]) == 40
+    assert [r["id"] for r in splits["val"]] == [str(i) for i in range(100, 108)]
+    assert [r["id"] for r in splits["test"]] == [str(i) for i in range(200, 208)]
+    assert [r["label"] for r in splits["test"]] == [i % 4 for i in range(200, 208)]
+    assert splits["public_test"] is splits["val"] and splits["private_test"] is splits["test"]
+
+    with pytest.raises(ValueError, match="không có nhãn"):
+        load("data.private_test_labels=missing-ref.json")
+    assert len(load("data.split=random")["train"]) == 32

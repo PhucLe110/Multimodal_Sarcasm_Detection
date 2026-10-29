@@ -10,6 +10,8 @@ MODALITY_NEEDS = {
     "image": (False, True),
     "concat": (True, True),
     "cross_attn": (True, True),
+    "multistream": (True, False),
+    "multistream_clip": (True, True),
 }
 
 

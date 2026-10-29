@@ -1,0 +1,18 @@
+# Phase 4, fusion nhiều luồng: caption, chữ trong ảnh (OCR), mô tả ảnh (VLM) mã hoá RIÊNG bằng cùng một PhoBERT đóng băng,
+# mỗi luồng LayerNorm + Linear(256) rồi nối lại (không gộp OCR vào caption, không cộng với hệ số đặt tay như text_aux).
+# Thêm t*s, |t - s| giữa caption và từng luồng từ ảnh, cờ có/không có OCR/mô tả, và modality dropout 30% cho luồng từ ảnh.
+# So với text_only_frozen (cùng PhoBERT đóng băng, cùng lr head): chữ từ ảnh có giúp không.
+inherit: text_only_frozen.yaml
+model:
+  modality: multistream
+  fusion:
+    proj_dim: 256
+    streams: [ocr, description]
+    interactions: true
+    aux_drop_prob: 0.3
+data:
+  image_text:
+    use_ocr: true
+    use_description: true
+    file: image_preprocessed.json   # dataset Kaggle funalee/vimmsd-data-preprocessed, train.py tự copy sang cache
+    aux_max_length: 128             # OCR ảnh chụp bình luận và mô tả VLM (tối đa 96 token Vintern) dài hơn 96 token PhoBERT

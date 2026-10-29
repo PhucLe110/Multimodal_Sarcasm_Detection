@@ -1,0 +1,8 @@
+# Ablation của fusion_multistream_frozen: chỉ caption + mô tả VLM (bỏ luồng OCR).
+inherit: fusion_multistream_frozen.yaml
+model:
+  fusion:
+    streams: [description]
+data:
+  image_text:
+    use_ocr: false

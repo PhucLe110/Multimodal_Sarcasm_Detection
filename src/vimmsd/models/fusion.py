@@ -96,6 +96,72 @@ class ConcatFusion(nn.Module):
         return torch.cat([t, i], dim=-1)
 
 
+class MultiStreamFusion(nn.Module):
+    """Nhiều luồng giữ riêng, nối vector: caption, chữ trong ảnh (OCR), mô tả ảnh (VLM), và vector CLIP nếu có.
+
+    Khác `TextAuxFusion` (cộng các luồng với hệ số đặt tay) và khác cách ghép chuỗi (OCR, mô tả thành segment 2
+    của caption): mỗi luồng qua LayerNorm + Linear(proj_dim) riêng rồi nối lại, head tự học trọng số, và vẫn biết
+    tín hiệu đến từ caption hay từ ảnh, đúng với cách chia nhãn text-sarcasm / image-sarcasm.
+
+    - Luồng chữ từ ảnh bị thiếu (ảnh không có chữ, không có mô tả) thành vector 0, kèm cờ có/không ở cuối vector,
+      để head không nhầm "không có chữ" với "chữ trung tính".
+    - `interactions`: thêm t*s và |t - s| giữa caption t và từng luồng chữ từ ảnh s, đo mức khớp/lệch giữa
+      caption và nội dung ảnh (sarcasm dạng nói một đằng, ảnh một nẻo).
+    - `aux_drop_prob`: modality dropout, mỗi mẫu train bỏ từng luồng từ ảnh (OCR, mô tả, CLIP) với xác suất này,
+      coi như luồng đó vắng mặt; buộc head dùng được caption khi thiếu ảnh. Caption không bao giờ bị bỏ.
+    - `image_feature_dropout`: dropout trên vector CLIP (chống học thuộc qua vector ảnh cố định, xem ConcatFusion)."""
+
+    AUX = ("ocr", "description")
+
+    def __init__(self, text_dim, image_dim=None, proj_dim=256, streams=AUX, interactions=True,
+                 aux_drop_prob=0.0, image_feature_dropout=0.0, **_):
+        super().__init__()
+        streams = tuple(streams)
+        if not streams or set(streams) - set(self.AUX):
+            raise ValueError(f"streams phải là tập con khác rỗng của {self.AUX}, nhận được {streams}")
+        if not 0 <= aux_drop_prob < 1:
+            raise ValueError("aux_drop_prob phải trong [0, 1)")
+        self.streams = streams
+        self.interactions = bool(interactions)
+        self.aux_drop_prob = float(aux_drop_prob)
+        self.use_image = image_dim is not None
+
+        def proj(dim):
+            return nn.Sequential(nn.LayerNorm(dim), nn.Linear(dim, proj_dim))
+
+        self.caption_proj = proj(text_dim)
+        self.aux_proj = nn.ModuleDict({name: proj(text_dim) for name in streams})
+        if self.use_image:
+            self.image_proj = proj(image_dim)
+            self.image_feature_dropout = nn.Dropout(image_feature_dropout)
+        n_streams = 1 + len(streams) + int(self.use_image)
+        self.out_dim = n_streams * proj_dim + len(streams) + (2 * proj_dim * len(streams) if self.interactions else 0)
+
+    def _keep(self, present):
+        """Cờ có mặt (B,) sau modality dropout: luồng bị bỏ được coi như vắng mặt."""
+        if self.training and self.aux_drop_prob:
+            present = present * (torch.rand_like(present) >= self.aux_drop_prob).to(present.dtype)
+        return present
+
+    def forward(self, text, image=None):
+        t = self.caption_proj(text["pooled"])
+        feats, flags, inter = [t], [], []
+        for name in self.streams:
+            if text.get(name) is None:
+                raise ValueError(f"thiếu luồng '{name}': bật data.image_text.use_{name} và dùng file image_preprocessed")
+            present = self._keep(text[f"{name}_present"].to(t.dtype))
+            s = self.aux_proj[name](text[name]) * present.unsqueeze(-1)
+            feats.append(s)
+            flags.append(present.unsqueeze(-1))
+            if self.interactions:
+                # luồng vắng mặt: s = 0 nên t*s = 0; |t - s| cũng phải về 0 để không lặp lại t
+                inter += [t * s, (t - s).abs() * present.unsqueeze(-1)]
+        if self.use_image:
+            i = self.image_proj(self.image_feature_dropout(image["pooled"]))
+            feats.append(i * self._keep(torch.ones_like(i[:, 0])).unsqueeze(-1))
+        return torch.cat(feats + inter + flags, dim=-1)
+
+
 class CrossAttentionBlock(nn.Module):
     def __init__(self, dim, num_heads, dropout):
         super().__init__()
@@ -163,4 +229,6 @@ FUSIONS = {
     "image": ImageOnlyFusion,
     "concat": ConcatFusion,
     "cross_attn": CrossAttentionFusion,
+    "multistream": MultiStreamFusion,       # caption + OCR + mô tả VLM, không dùng CLIP
+    "multistream_clip": MultiStreamFusion,  # như trên + vector CLIP
 }

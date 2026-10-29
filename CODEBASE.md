@@ -39,6 +39,10 @@ IE403/
 │   ├── text_only_frozen_cw.yaml # Tuần 4: text_only_frozen + class weight sqrt_inverse
 │   ├── fusion_concat_frozen_reg.yaml # Tuần 4: concat đóng băng + LayerNorm/projection mỗi nhánh, dropout ảnh, modality dropout
 │   ├── fusion_concat_frozen_reg_cw.yaml # Tuần 4: như trên + class weight sqrt_inverse
+│   ├── fusion_multistream_frozen.yaml # Tuần 4: caption, OCR, mô tả VLM mã hoá riêng bằng PhoBERT đóng băng, nối vector
+│   ├── fusion_multistream_clip_frozen.yaml # Tuần 4: như trên + vector CLIP
+│   ├── fusion_multistream_ocr_frozen.yaml # Tuần 4: ablation, caption + OCR
+│   ├── fusion_multistream_desc_frozen.yaml # Tuần 4: ablation, caption + mô tả VLM
 │   ├── fusion_cross_attn.yaml # Tuần 5
 │   └── fusion_cross_attn_focal.yaml # Tuần 5 (+ xử lý imbalance)
 │
@@ -231,7 +235,7 @@ paths:
     output_dir: outputs
     cache_dir: data/processed
   kaggle:
-    data_dir: /kaggle/input/<tên-dataset-vimmsd>
+    data_dir: /kaggle/input/datasets/phuclkz/vimmsd-private-dataset
     output_dir: /kaggle/working/outputs
     cache_dir: /kaggle/working/cache
   colab:
@@ -321,7 +325,7 @@ Không cần môi trường ảo phức tạp. Kaggle/Colab cài qua cell bootst
 Khung code ở mục 2 đã có đủ (trừ `PLAN.md`). Việc cần làm để chạy thật:
 
 1. ~~`git init`, push lên GitHub, sửa `REPO` trong cell bootstrap~~ (đã xong: repo public [yunaLee21/Multimodal_Sarcasm_Detection](https://github.com/yunaLee21/Multimodal_Sarcasm_Detection), không cần `GITHUB_TOKEN`).
-2. Chạy `notebooks/00_dataset_check.ipynb` trên Kaggle (attach `hhhoang/vimmsd-dataset`), đối chiếu đường dẫn nó in ra với `paths.kaggle.data_dir` trong `configs/base.yaml`.
+2. Chạy `notebooks/00_dataset_check.ipynb` trên Kaggle (attach `phuclkz/vimmsd-private-dataset`), đối chiếu đường dẫn nó in ra với `paths.kaggle.data_dir` trong `configs/base.yaml`.
 3. Xử lý các điểm "CHÚ Ý" trong bảng tổng kết của notebook (tiền xử lý caption, cách chia val/test).
 4. Chạy `notebooks/00_template.ipynb` trên Kaggle để chắc chắn clone + import `vimmsd` + đọc dữ liệu hoạt động, rồi chạy `01_eda.ipynb` và `01b_image_text_extraction.ipynb` (tạo cache OCR + mô tả VLM, cần GPU).
 5. Sau đó các thành viên làm song song theo notebook 02–07, chỉnh hyperparameter qua config/`--override`, sửa code trong `src/` qua PR.
