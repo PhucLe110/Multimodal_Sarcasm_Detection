@@ -3,6 +3,8 @@ data/raw/*
 data/processed/*
 data/processed_v1/*
 data/processed_v2/*
+data/sample/
+reports/literature_review/papers/
 notebooks/logs/
 !data/raw/.gitkeep
 !data/processed/.gitkeep
