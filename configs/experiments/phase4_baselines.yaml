@@ -1,0 +1,19 @@
+# Baseline Phase 4 (như notebook 04) chạy lại trên GPU server, làm mốc cho cổng G0 của CoT distillation
+# (docs/cot_distillation_plan.md). data.split=official: val = public test, test = private test.
+#   python scripts/run_experiments.py --plan configs/experiments/phase4_baselines.yaml
+name: phase4_baselines
+seeds: [42, 1, 2]
+overrides: [data.split_seed=42]
+evaluate: [test]   # ghi test_predictions.csv để phân tích lỗi; summarize_results.py vẫn chỉ đọc val trừ khi --with-test
+runs:
+  - configs/text_only_frozen.yaml
+  - configs/image_only_frozen.yaml
+  - configs/fusion_concat_frozen.yaml
+  - configs/fusion_concat_ftlast.yaml
+  - configs/text_only_frozen_cw.yaml
+  - configs/fusion_concat_frozen_reg.yaml
+  - configs/fusion_concat_frozen_reg_cw.yaml
+  - configs/fusion_multistream_frozen.yaml
+  - configs/fusion_multistream_clip_frozen.yaml
+  - configs/fusion_multistream_ocr_frozen.yaml
+  - configs/fusion_multistream_desc_frozen.yaml

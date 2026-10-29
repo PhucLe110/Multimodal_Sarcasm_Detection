@@ -179,11 +179,11 @@ Kết quả ghi vào `reports/results.md`. Bản tổng hợp riêng đặt ở 
 
 | # | Việc | Phụ thuộc | Trạng thái |
 |---|---|---|---|
-| S.1 | Cài server (`setup_env.sh`), tải data + cache có sẵn, `pytest` | – | chưa làm |
-| S.2 | `run_experiments.py`, `summarize_results.py`, `preprocess_text.py` | – | chưa làm |
+| S.1 | Cài server (`setup_env.sh`), tải data + cache có sẵn (`prepare_data.sh`), chạy plan `smoke` | – | đã có script, chưa chạy trên server |
+| S.2 | `run_experiments.py`, `summarize_results.py`, `preprocess_text.py` | – | xong (có test), chưa chạy trên server |
 | 0.1 | Head phân cấp + loss + test | – | chưa làm |
 | 0.2 | Nhãn phụ từ nhãn gốc + hiệu chỉnh prior | – | chưa làm |
-| 0.3 | Chạy (a)/(b) phẳng, phân cấp, cascade × 3 seed | S.1, S.2, 0.1, 0.2 | chưa làm |
+| 0.3 | Chạy plan `phase4_baselines` (mốc), rồi (a)/(b) phẳng, phân cấp, cascade × 3 seed | S.1, S.2, 0.1, 0.2 | chưa làm |
 | 1.1 | Đối chiếu định nghĩa nhãn, viết prompt v1 | – | chưa làm |
 | 1.2 | `generate_rationales.py`, `eval_teacher.py`, `make_id_lists.py` | – | chưa làm |
 | 1.3 | prompt-dev, pilot-eval, zero-shot trên val → G1 | 1.1, 1.2, 0.3 | chưa làm |

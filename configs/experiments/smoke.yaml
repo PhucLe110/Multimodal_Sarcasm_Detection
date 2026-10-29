@@ -1,0 +1,9 @@
+# Kiểm tra GPU server chạy được toàn pipeline train + evaluate (1 run, 1 epoch), không dùng để báo cáo.
+#   python scripts/run_experiments.py --plan configs/experiments/smoke.yaml --gpu-ids 0
+name: smoke
+seeds: [42]
+evaluate: [val]
+runs:
+  - config: configs/text_only_frozen.yaml
+    name: smoke_text_only_frozen
+    overrides: [train.epochs=1]

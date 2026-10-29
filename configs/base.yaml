@@ -7,6 +7,10 @@ paths:
     data_dir: data/raw
     output_dir: outputs
     cache_dir: data/processed
+  server:   # GPU server riêng (VIMMSD_ENV=server): data/server/* là symlink ra ổ dữ liệu, tạo bằng scripts/server/prepare_data.sh
+    data_dir: data/server/raw
+    output_dir: data/server/outputs
+    cache_dir: data/server/cache
   kaggle:
     data_dir: /kaggle/input/datasets/phuclkz/vimmsd-private-dataset   # public/private test đã có nhãn
     output_dir: /kaggle/working/outputs

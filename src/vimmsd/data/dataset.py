@@ -275,12 +275,12 @@ def collect_captions(cfg):
 
 
 def build_text_cache(cfg):
-    """Chuẩn hóa toàn bộ caption và ghi 01a_text_preprocessing.json vào paths.cache_dir.
+    """Chuẩn hóa toàn bộ caption và ghi data.text.cache_file vào text_cache_dir(cfg).
 
-    Notebook train đọc lại file này qua TextPreprocessor.process_all, nên không xử lý lại từ đầu.
+    Train đọc lại file này qua TextPreprocessor.process_all, nên không xử lý lại từ đầu.
     """
     pre = TextPreprocessor.from_config(cfg.data.text)
-    out_dir = Path(cfg.paths.cache_dir)
+    out_dir = Path(text_cache_dir(cfg))
     captions, used = collect_captions(cfg)
     pre.process_all(captions, cache_dir=out_dir)
     return pre._cache_file(out_dir), len(captions), used

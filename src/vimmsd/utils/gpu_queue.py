@@ -26,10 +26,11 @@ class Job:
     minutes: float = field(default=None, init=False)
 
 
-def run_on_gpus(jobs, num_gpus, summary_pattern=None, tail_on_error=30):
+def run_on_gpus(jobs, num_gpus, summary_pattern=None, tail_on_error=30, gpu_ids=None):
     """Chạy `jobs` trên `num_gpus` GPU, trả về danh sách job đã chạy (kèm returncode, error, minutes).
 
     num_gpus = 0 (máy không có GPU) thì chạy tuần tự, không đặt CUDA_VISIBLE_DEVICES.
+    `gpu_ids`: chỉ dùng các GPU này (vd [2, 3] trên server dùng chung), bỏ qua `num_gpus`.
     `summary_pattern`: regex, job xong thì in các dòng log khớp (vd các dòng `INFO epoch`).
     Ngắt kernel (KeyboardInterrupt) thì dừng luôn các tiến trình con đang chạy."""
     pending = queue.Queue()
@@ -88,7 +89,10 @@ def run_on_gpus(jobs, num_gpus, summary_pattern=None, tail_on_error=30):
                 lines = [l for l in text if pattern.search(l)] if pattern else []
                 say(f"{tag} xong {job.name} ({job.minutes:.1f} phút)" + "".join(f"\n    {l}" for l in lines))
 
-    gpus = list(range(num_gpus)) if num_gpus > 0 else [None]
+    if gpu_ids:
+        gpus = list(gpu_ids)
+    else:
+        gpus = list(range(num_gpus)) if num_gpus > 0 else [None]
     threads = [threading.Thread(target=worker, args=(g,), daemon=True) for g in gpus]
     for t in threads:
         t.start()

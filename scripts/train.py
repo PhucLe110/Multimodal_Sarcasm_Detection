@@ -90,7 +90,7 @@ def main():
            f"{summary['train_minutes']:.1f} | {note} |")
     # trên Kaggle/Colab repo là bản clone tạm, nên ghi thêm vào output_dir để copy dòng này về reports/results.md
     append_result(output_dir / "results_row.md", row)
-    if cfg.env == "local":
+    if cfg.env in ("local", "server"):  # repo là bản clone lâu dài, ghi thẳng vào reports/results.md
         append_result(find_project_root(args.config) / "reports" / "results.md", row)
     print("\nDòng kết quả cho reports/results.md:\n" + row)
 
