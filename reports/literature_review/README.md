@@ -26,7 +26,32 @@ Có hai điểm ảnh hưởng trực tiếp tới thiết kế thí nghiệm:
 1. **Lệch phân bố giữa train và test (label shift).** Trong train, lớp đông nhất là `not-sarcasm`, còn ở public/private test thì `multi-sarcasm` chiếm khoảng 2/3. Model học prior của train sẽ đoán thiếu `multi-sarcasm` khi chạy trên test. Ngưỡng quyết định và class weight chọn bằng cách chia ngẫu nhiên từ train (`data.split=random`) sẽ không chuyển được sang test.
 2. **`text-sarcasm` gần như không đo được.** Public test chỉ có 1 mẫu và private test có 7 mẫu thuộc lớp này. Nếu dùng macro-F1 trên public test để chọn checkpoint thì F1 của lớp này chỉ là 0 hoặc 1, nên chiếm tới 1/4 điểm macro-F1 và rất nhiễu. Cần báo cáo thêm F1 từng lớp và cân nhắc dùng metric phụ (weighted-F1, macro-F1 trên 3 lớp còn lại) để chọn model.
 
-Bài duy nhất mình tìm được dùng trực tiếp ViMMSD là *Multimodal Sarcasm Detection on Vietnamese Social Media* (Vu, Hoang, Phan, Nguyen; IEA/AIE 2025, LNCS 15707, DOI 10.1007/978-981-96-8892-0_31). Theo abstract, bài đề xuất ba hướng tiếp cận dựa trên LLM pre-trained, kết hợp đặc trưng ảnh và text cho 4 nhãn trên. Bài này nằm sau paywall Springer nên chưa có trong `papers/` và chưa đọc được chi tiết.
+Bài báo duy nhất mình tìm được làm trực tiếp trên ViMMSD là Vu et al. (IEA/AIE 2025), tóm tắt ở mục 1.1. Bảng 1 trong bài ghi private test có 2 mẫu `text-sarcasm`. Nhưng cộng các cột của bảng chỉ được 1 499, không khớp với tổng 1 504 mẫu. Còn đếm từ `vimmsd-private-test-ref.json` thì có 7 mẫu, và cộng lại đúng 1 504. Vậy nhiều khả năng con số 2 là lỗi đánh máy.
+
+### 1.1. Vu et al. (2025): baseline đã công bố trên ViMMSD
+
+*Multimodal Sarcasm Detection on Vietnamese Social Media* (Nhu Minh Vu, Yen Nhi Nguyen Hoang, Tram Hong Phan, Binh T. Nguyen; HCMUS / AISIA; IEA/AIE 2025, LNAI 15707, tr. 367–378).
+
+**Tiền xử lý.**
+- Caption: tách emoji bằng thư viện `emoji`, rồi gán nghĩa cho từng emoji **bằng tay**, theo emojipedia và theo cách dùng trên mạng xã hội Việt.
+- Mô tả ảnh: dùng **BLIP**. Nhóm có thử BLIP-2 nhưng tốn tài nguyên quá. Họ cũng thử GPT-2 nhưng mô tả sai nội dung (cầu thủ bóng đá bị mô tả thành cầu thủ bóng chày).
+- OCR: dùng EasyOCR và Google Cloud Vision.
+- Như vậy mỗi mẫu có 5 đầu vào: ảnh, mô tả ảnh, OCR, caption và giải nghĩa emoji.
+
+**Ba hướng tiếp cận.** Encoder đều là model tiếng Anh (RoBERTa-base, CLIP-ViT-L/14, FLAVA). Bài không dùng PhoBERT hay ViSoBERT, cũng không dịch caption sang tiếng Anh.
+
+| | Kiến trúc | F1 private test |
+|---|---|---:|
+| Approach 1 | FLAVA-full mã hoá caption + emoji + OCR và ảnh, nối vector, đưa qua MLP | 0,35 (EasyOCR), 0,33 (Google Vision) |
+| Approach 2 | Tách thành **2 bài toán nhị phân**. Bài 1 hỏi "có châm biếm trong text không": nhãn 1 là `multi` hoặc `text`, dùng RoBERTa. Bài 2 hỏi "có châm biếm trong ảnh không": nhãn 1 là `multi` hoặc `image`, dùng CLIP. Một mạng thứ ba học cách gộp hai kết quả thành 4 nhãn | **0,41** (public 0,37) |
+| Approach 3 | Phân cấp. Model 1 phân biệt `multi` với phần còn lại (CLIP). Model 2 dùng cross-attention chia phần còn lại thành `not` / `text` / `image`. Tăng dữ liệu bằng dịch ngược caption (Opus-MT), loss gồm CE có trọng số + contrastive + L2 | 0,33 |
+
+**Nhận xét.**
+- **Đây là mốc tham chiếu duy nhất đã công bố trên ViMMSD.** Kết quả tốt nhất là F1 0,41 trên private test. Bài ghi metric là "micro-average F1", nhưng với phân loại đơn nhãn thì micro-F1 bằng accuracy, khi đó P, R và F1 phải bằng nhau. Bảng trong bài lại cho P, R, F1 khác nhau, nên metric thực tế có lẽ là macro hoặc weighted. Vì vậy khi so với kết quả của mình, cần ghi rõ loại F1 đang dùng.
+- **Train và test chênh lệch rất lớn.** Approach 1 đạt F1 0,63 trên train nhưng chỉ 0,34 trên public test. Mức chênh này khớp với label shift ở mục 1 (`multi-sarcasm` chiếm 39% train nhưng 66% test). Bài không nhắc tới chuyện label shift, mà chỉ quy kết quả kém cho mất cân bằng lớp.
+- **Cách tách nhị phân của Approach 2 bám đúng ngữ nghĩa nhãn.** Hai câu hỏi "text có châm biếm không" và "ảnh có châm biếm không" tương ứng với hai trục, và 4 nhãn ViMMSD chính là 4 tổ hợp của chúng. Nhờ vậy mỗi bài toán nhị phân có khá nhiều mẫu dương. Ví dụ trục text có 4 224 + 77 mẫu dương, thay vì chỉ 77 mẫu nếu tách riêng lớp `text-sarcasm`. Trong ba hướng, đây là hướng tốt nhất.
+- **Pipeline phân cấp (Approach 3) bị lỗi lan truyền.** Lỗi của Model 1 (F1 0,69) đi thẳng vào đầu vào của Model 2. Dịch ngược caption cũng không tạo đủ mẫu tốt cho các lớp hiếm.
+- **Có hai điểm project đã làm khác.** Thứ nhất, project dùng encoder tiếng Việt (PhoBERT). Thứ hai, project mô tả ảnh bằng VLM mới hơn (Qwen2.5-VL, Vintern) thay vì BLIP, vốn chỉ sinh mô tả tiếng Anh và khá ngắn.
 
 ---
 
@@ -115,7 +140,8 @@ Với ViMMSD có 4 nhãn tiếng Việt và hai lớp rất hiếm, khó kỳ v�
 | Shortcut từ hashtag / emoji | MMSD2.0 | `demojize`, chuẩn hoá teencode | Ablation có và không có hashtag/emoji. Kiểm tra tần suất hashtag theo nhãn. |
 | Incongruity giữa ảnh và text | Toàn bộ mục 3.1–3.4 | `cross_attn`, các đặc trưng tương tác `t*s` và `\|t-s\|` trong `multistream` | Thêm nhánh độ lệch cảm xúc kiểu DIP/GDCNet giữa caption và mô tả ảnh. |
 | Đưa ảnh về dạng chữ | HFM (attribute), HKE (caption), GDCNet, MiDRE (mô tả/rationale từ MLLM) | OCR + mô tả VLM, ghép segment / `text_aux` / `multistream` (4 config ablation) | Prompt VLM sinh mô tả **khách quan** (GDCNet cho thấy ổn định hơn gợi ý châm biếm). Đo lượng hallucination trên một mẫu nhỏ. |
-| Mất cân bằng lớp | Focal loss. SarcNet, ViMMSD có lớp theo modality rất hiếm | `class_weight` (inverse / sqrt_inverse / effective), focal, weighted sampler | Hiệu chỉnh theo label shift: điều chỉnh logit theo prior của val (logit adjustment). Lưu ý `text-sarcasm` có 1 mẫu trong val. |
+| Mất cân bằng lớp | Focal loss. SarcNet, ViMMSD có lớp theo modality rất hiếm. Vu et al.: tách nhị phân theo 2 trục text/ảnh là tốt nhất, phân cấp và dịch ngược thì kém | `class_weight` (inverse / sqrt_inverse / effective), focal, weighted sampler | Hiệu chỉnh theo label shift: điều chỉnh logit theo prior của val (logit adjustment). Thử head 2 trục text/ảnh (mục 6). Lưu ý `text-sarcasm` có 1 mẫu trong val. |
+| Giải nghĩa emoji | Vu et al. gán nghĩa emoji bằng tay theo cách dùng trên mạng xã hội Việt | `emoji: demojize`: emoji phổ biến được dịch sang tiếng Việt, còn lại giữ tên tiếng Anh | Bài không có ablation riêng cho emoji, nên chưa rõ việc gán nghĩa bằng tay có đáng công không. |
 | Không gian embedding chung | Multi-view CLIP, InterCLIP-MEP dùng chung CLIP cho ảnh và text | PhoBERT (VI) và CLIP (EN) tách rời | Thử CLIP đa ngôn ngữ, hoặc tính độ tương đồng CLIP giữa ảnh và mô tả ảnh (tiếng Anh) làm đặc trưng. |
 | Model chỉ chạy được bằng prompting | Commander-GPT, IRONIC, Basnet et al. | Notebook 07 so sánh OCR/LLM | Một baseline zero-shot (Qwen2.5-VL / Vintern) với 4 nhãn để đặt mốc tham chiếu trong báo cáo. |
 
@@ -123,17 +149,17 @@ Với ViMMSD có 4 nhãn tiếng Việt và hai lớp rất hiếm, khó kỳ v�
 
 ## 6. Đề xuất thứ tự thí nghiệm
 
-1. **Chốt cách đánh giá trước.** Với `data.split=official`, báo cáo macro-F1, F1 từng lớp và confusion matrix trên private test. Chọn checkpoint theo một metric ít nhiễu hơn macro-F1 4 lớp trên public test (vì lớp `text-sarcasm` chỉ có 1 mẫu trong val).
+1. **Chốt cách đánh giá trước.** Với `data.split=official`, báo cáo macro-F1, weighted-F1, F1 từng lớp và confusion matrix trên private test. Mốc cần vượt là F1 0,41 trên private test của Vu et al. (2025), và khi so phải ghi rõ đang dùng loại F1 nào. Chọn checkpoint theo một metric ít nhiễu hơn macro-F1 4 lớp trên public test (vì lớp `text-sarcasm` chỉ có 1 mẫu trong val).
 2. **Đo ảnh hưởng của label shift.** Chạy lại baseline tốt nhất, có và không có logit adjustment theo prior của val. Đây là thay đổi rẻ, có thể tác động lớn khi `multi-sarcasm` chiếm 66% test.
 3. **Ablation các modality phụ.** Chạy 4 config `fusion_multistream_*` (caption + OCR + mô tả, có/không CLIP) trên split mới.
 4. **Thử ViSoBERT thay PhoBERT**, giữ nguyên head tốt nhất.
 5. **Thử đặc trưng độ lệch kiểu GDCNet**: độ lệch ngữ nghĩa và cảm xúc giữa caption và mô tả ảnh, đưa vào head qua cổng.
+6. **Head hai trục text/ảnh** (lấy ý tưởng từ Approach 2 của Vu et al.). Dùng chung encoder, thêm 2 head sigmoid: "text có châm biếm" (`multi` hoặc `text`) và "ảnh có châm biếm" (`multi` hoặc `image`), rồi suy ra 4 nhãn từ tổ hợp hai dự đoán. Có thể train chung với head 4 lớp như một loss phụ. Cách này khác bài gốc ở chỗ train end-to-end thay vì 3 giai đoạn riêng.
 
 ---
 
 ## 7. Hạn chế của review này
 
-- Chưa đọc được toàn văn bài ViMMSD ở IEA/AIE 2025 (paywall). Nếu nhóm truy cập được qua thư viện trường thì nên bổ sung vào `papers/`.
 - Chưa có toàn văn MILNet (Qiao et al., AAAI 2023) và CofiPara, hai bài được nhiều bài khác trích dẫn.
 - Các số liệu SOTA trên MMSD/MMSD2.0 không so sánh trực tiếp được với ViMMSD (khác ngôn ngữ, khác số lớp). Bảng trong review chỉ dùng để chọn hướng tiếp cận, không dùng để đặt mục tiêu điểm số.
 - Repo GitHub của các đội thi DSC 2024 (ví dụ `BFCmath/DataScienceChallenge-UIT2024`, `dinhthienan33/DSC2024_WEBUFF`) chưa được đọc kỹ. Nên xem lời giải của họ trước khi chốt pipeline.
@@ -172,4 +198,4 @@ Với ViMMSD có 4 nhãn tiếng Việt và hai lớp rất hiếm, khó kỳ v�
 | `2025_zhao_mmsd3.pdf` | Zhao et al. *MMSD3.0: A Multi-Image Benchmark for Real-World Multimodal Sarcasm Detection.* 2025. | [arXiv:2510.23299](https://arxiv.org/abs/2510.23299) |
 | `2026_wang_urmf.pdf` | Wang et al. *URMF: Uncertainty-aware Robust Multimodal Fusion for Multimodal Sarcasm Detection.* 2026. | [arXiv:2604.06728](https://arxiv.org/abs/2604.06728) |
 | `2026_zhang_gdcnet.pdf` | Zhang, Lian, Yu, Xu, Ao. *GDCNet: Generative Discrepancy Comparison Network for Multimodal Sarcasm Detection.* 2026. | [arXiv:2601.20618](https://arxiv.org/abs/2601.20618) |
-| (chưa tải, paywall) | Vu, Hoang, Phan, Nguyen. *Multimodal Sarcasm Detection on Vietnamese Social Media.* IEA/AIE 2025, LNCS 15707. | [Springer](https://link.springer.com/chapter/10.1007/978-981-96-8892-0_31) |
+| `2025_vu_vimmsd_ieaaie.pdf` | Vu, Nguyen Hoang, Phan, Nguyen. *Multimodal Sarcasm Detection on Vietnamese Social Media.* IEA/AIE 2025, LNAI 15707, tr. 367–378. | [Springer](https://link.springer.com/chapter/10.1007/978-981-96-8892-0_31) |
