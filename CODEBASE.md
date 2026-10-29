@@ -49,13 +49,16 @@ IE403/
 │   ├── fusion_multistream_desc_frozen.yaml # Tuần 4: ablation, caption + mô tả VLM
 │   ├── fusion_cross_attn.yaml # Tuần 5
 │   ├── fusion_cross_attn_focal.yaml # Tuần 5 (+ xử lý imbalance)
-│   ├── distill_flat_{a,b,c,d}.yaml # (dự kiến) M1 và ablation, xem docs/cot_distillation.md mục 6.2
-│   ├── distill_hier_{a,b,c,d}.yaml # (dự kiến) M2 và ablation
-│   ├── hier_cascade.yaml           # (dự kiến) tái lập pipeline phân cấp nối tiếp của Vu et al.
+│   ├── distill_base.yaml           # backbone chung cho CoT distillation (multistream_clip đóng băng)
+│   ├── distill_flat_{a,b,c,d}.yaml # M1 (= d) và các cột ablation, xem docs/cot_distillation.md mục 6.2; *_d_nogroup3 bỏ nhóm 3
+│   ├── distill_hier_{a,b,c,d}.yaml # M2 (= d) và các cột ablation; *_d_nogroup3 bỏ nhóm 3
+│   ├── hier_cascade.yaml           # kiểu pipeline phân cấp nối tiếp của Vu et al. (định tuyến cứng), để đối chiếu
 │   └── experiments/                # plan config × seed cho run_experiments.py (mục 7.3)
 │       ├── smoke.yaml              # kiểm tra server: 1 run, 1 epoch
 │       ├── phase4_baselines.yaml   # 11 config notebook 04 × 3 seed, mốc cho cổng G0
-│       └── cot_distill*.yaml       # (dự kiến)
+│       ├── cot_distill_stage0.yaml # cột (a)/(b) + cascade × 3 seed, cổng G0
+│       ├── cot_distill_grid.yaml   # grid λ_axis × λ_rat trên cột (d)
+│       └── cot_distill.yaml        # ma trận đầy đủ × 3 seed
 │
 ├── data/
 │   ├── README.md            # Hướng dẫn tải ViMMSD (script + link, không commit data thật)
@@ -71,7 +74,7 @@ IE403/
 │       │   ├── dataset.py         # class ViMMSDDataset (PyTorch Dataset)
 │       │   ├── preprocessing.py   # word segmentation, chuẩn hóa text, resize/normalize ảnh
 │       │   ├── image_text.py      # ảnh → text: OCR (PaddleOCR + VietOCR) + mô tả ảnh (VLM Vintern), cache JSON
-│       │   ├── rationale.py       # (dự kiến) prompt CoT, parse JSON của teacher, phân nhóm, đọc rationale_dataset.json
+│       │   ├── rationale.py       # prompt CoT, teacher Qwen2.5-VL, parse JSON, phân nhóm, chấm (κ), gộp rationale_dataset.json
 │       │   └── augmentation.py    # back-translation, image augmentation nhẹ
 │       │
 │       ├── models/
@@ -79,12 +82,13 @@ IE403/
 │       │   ├── image_encoder.py   # wrapper CLIP/ViT
 │       │   ├── freezing.py        # đóng băng encoder, mở lại N block cuối (unfreeze_last_n)
 │       │   ├── fusion.py          # ConcatFusion, CrossAttentionFusion, MultiStreamFusion
-│       │   └── classifier.py      # head phân loại 4 lớp (flat; dự kiến thêm hierarchical), lắp ghép encoder + fusion
+│       │   ├── heads.py           # head flat / hierarchical (S × C) / cascade, hiệu chỉnh prior theo tầng
+│       │   └── classifier.py      # lắp ghép encoder + fusion + head (model.head), head phụ T/I, phép chiếu reasoning
 │       │
 │       ├── training/
 │       │   ├── trainer.py         # vòng lặp train/eval chung
-│       │   ├── losses.py          # CrossEntropy có weight, FocalLoss; dự kiến: loss phụ T/I, căn chỉnh reasoning, NLL phân cấp
-│       │   └── metrics.py         # precision/recall/f1 (macro), confusion matrix; dự kiến: hiệu chỉnh prior
+│       │   ├── losses.py          # CE có weight, FocalLoss, SarcasmLoss (λ_S, λ_axis, λ_rat; loss cascade)
+│       │   └── metrics.py         # precision/recall/f1 (macro), confusion matrix
 │       │
 │       ├── analysis/              # Tuần 6-7
 │       │   ├── shortcut_check.py    # thí nghiệm tráo ảnh
@@ -104,19 +108,18 @@ IE403/
 │   ├── preprocess_text.py    # chuẩn hoá toàn bộ caption → text_preprocessed.json (thay notebook 01a)
 │   ├── extract_image_text.py # tạo cache OCR / mô tả VLM cho toàn bộ ảnh (chạy 1 lần, cần GPU)
 │   ├── build_image_text_dataset.py # gộp ocr.json + description.json → image_preprocessed.json/.csv
-│   ├── make_id_lists.py      # (dự kiến) danh sách id cho tập thử teacher và các lô sinh reasoning
-│   ├── generate_rationales.py      # (dự kiến) teacher sinh k reasoning/mẫu, chạy tiếp được, chia shard
-│   ├── eval_teacher.py       # (dự kiến) so output teacher với nhãn: confusion matrix, F1, tỉ lệ parse lỗi
-│   ├── build_rationale_dataset.py  # (dự kiến) group / rationalize / export CSV chấm / merge → rationale_dataset.json
-│   ├── embed_rationales.py   # (dự kiến) mã hoá reasoning bằng PhoBERT đóng băng → rationale_embeddings.npy
+│   ├── make_id_lists.py      # danh sách id cho tập thử teacher và các lô sinh reasoning
+│   ├── generate_rationales.py      # teacher sinh k reasoning/mẫu, chạy tiếp được, chia shard
+│   ├── eval_teacher.py       # so output teacher với nhãn: confusion matrix, F1, tỉ lệ parse lỗi
+│   ├── build_rationale_dataset.py  # group / rationalize / export CSV chấm / merge → rationale_dataset.json
+│   ├── embed_rationales.py   # mã hoá reasoning bằng PhoBERT đóng băng → rationale_embeddings.npy
 │   ├── train.py              # entrypoint train: `python train.py --config configs/xxx.yaml`
 │   ├── run_experiments.py    # chạy plan config × seed trên N GPU (dùng gpu_queue), ghi log + status
 │   ├── summarize_results.py  # gộp metrics các seed → bảng trung bình ± độ lệch chuẩn (mặc định chỉ val)
 │   ├── evaluate.py           # entrypoint eval trên test set + xuất confusion matrix
 │   └── server/               # shell script cho GPU server
 │       ├── setup_env.sh        # tạo venv, cài requirements, kiểm tra GPU / Java, chạy pytest (mục 7.1)
-│       ├── prepare_data.sh     # tải data + cache, tạo symlink data/server/*, hoặc sinh lại cache (mục 7.4)
-│       └── cot_distill.sh      # (dự kiến) chạy các giai đoạn của docs/cot_distillation_plan.md
+│       └── prepare_data.sh     # tải data + cache, tạo symlink data/server/*, hoặc sinh lại cache (mục 7.4)
 │
 ├── notebooks/                # Notebook cho từng giai đoạn (theo PLAN.md), upload thẳng lên Kaggle; GPU server không dùng
 │   ├── 00_template.ipynb      # notebook mẫu chứa sẵn cell bootstrap (mục 6), copy ra khi tạo notebook mới
@@ -338,7 +341,7 @@ paths:
 ├── vimmsd_cache/
 │   ├── text_preprocessed.json
 │   ├── ocr.json, description.json, image_preprocessed.json/.csv
-│   └── rationales/              # (dự kiến, CoT distillation)
+│   └── rationales/              # CoT distillation (docs/cot_distillation_plan.md)
 │       ├── ids/*.txt                         # danh sách id tập thử và các lô
 │       ├── raw/<prompt_version>/*.jsonl      # output teacher, chia shard
 │       ├── review/<batch>.csv                # file chấm rubric
@@ -402,19 +405,19 @@ Script chạy lại được: bước nào đã có kết quả thì bỏ qua. L
 
 ### 7.5. CoT distillation trên server
 
-Thứ tự và cổng quyết định theo `docs/cot_distillation_plan.md`. Lệnh chính của từng giai đoạn (trừ `run_experiments.py` / `summarize_results.py`, các script còn lại chưa viết):
+Thứ tự và cổng quyết định theo `docs/cot_distillation_plan.md`; lệnh đầy đủ có trong docstring đầu mỗi script. `<R>` là `data/server/cache/rationales`.
 
 | Giai đoạn | Lệnh chính |
 |---|---|
 | 0 | `run_experiments.py --plan configs/experiments/cot_distill_stage0.yaml` (cột a/b, phẳng / phân cấp / cascade × 3 seed) |
-| 1 | `generate_rationales.py --ids-file pilot_dev.txt --k 1`, rồi `--ids-file pilot_eval.txt --k 3`, rồi `--splits public_test --k 1` (zero-shot trên val) |
-| 2 | `generate_rationales.py --splits train --ids-file batch{1,2,3}.txt --k {5,3,3} --num-shards N --shard i` |
-| 3 | `build_rationale_dataset.py group`, `rationalize`, `export` |
-| 4 | chấm file `review/*.csv` (không chạy gì trên server) |
-| 5 | `build_rationale_dataset.py merge`, `embed_rationales.py` |
-| 6 | `run_experiments.py --plan configs/experiments/cot_distill.yaml`, `summarize_results.py`, `evaluate.py --split test` |
+| 1 | `make_id_lists.py`; `generate_rationales.py --split train --ids-file <R>/ids/pilot_dev.txt --k 1 --temperature 0`, rồi `pilot_eval.txt --k 3`; `generate_rationales.py --split public_test --ids-file <R>/ids/val.txt --k 1 --temperature 0`; `eval_teacher.py --raw-dir <R>/raw/v1 ...` |
+| 2 | `generate_rationales.py --split train --ids-file <R>/ids/batch{1,2,3}.txt --k {5,3,3} --num-shards N --shard i` |
+| 3 | `build_rationale_dataset.py group`, `build_rationale_dataset.py rationalize` (rồi `generate_rationales.py --with-label`), `build_rationale_dataset.py export` |
+| 4 | chấm `<R>/review/*.csv`; `build_rationale_dataset.py kappa --a ... --b ...` |
+| 5 | `build_rationale_dataset.py merge --reviews <R>/review/*.csv`, `embed_rationales.py` |
+| 6 | `run_experiments.py --plan .../cot_distill_grid.yaml`, rồi `.../cot_distill.yaml`, `summarize_results.py`; cuối cùng `--extra-eval test` và `summarize_results.py --with-test` |
 
-Báo cáo tạm của từng giai đoạn (confusion matrix của teacher, thống kê phân nhóm) do script ghi ra `data/server/outputs/cot_distill/<giai đoạn>/`, thay cho các cell in kết quả trong notebook.
+`build_rationale_dataset.py` nhận `--config` / `--override` **sau** tên lệnh (vd `build_rationale_dataset.py merge --override ... --reviews ...`). Kết quả đánh giá teacher ghi vào `data/server/outputs/cot_distill/teacher_eval/<tên>/`.
 
 ### 7.6. Đồng bộ với nhóm
 
@@ -500,4 +503,4 @@ Khung code ở mục 2 đã có đủ (trừ `PLAN.md`). Việc cần làm để
 3. Xử lý các điểm "CHÚ Ý" trong bảng tổng kết của notebook (tiền xử lý caption, cách chia val/test).
 4. Chạy `notebooks/00_template.ipynb` trên Kaggle để chắc chắn clone + import `vimmsd` + đọc dữ liệu hoạt động, rồi chạy `01_eda.ipynb` và `01b_image_text_extraction.ipynb` (tạo cache OCR + mô tả VLM, cần GPU).
 5. Sau đó các thành viên làm song song theo notebook 02–07, chỉnh hyperparameter qua config/`--override`, sửa code trong `src/` qua PR.
-6. GPU server (CoT distillation): đã có `setup_env.sh`, `prepare_data.sh`, `preprocess_text.py`, `run_experiments.py`, `summarize_results.py`. Còn lại các file đánh dấu "(dự kiến)" ở mục 2, theo thứ tự head phân cấp (giai đoạn 0) → `make_id_lists.py` → `generate_rationales.py` → `eval_teacher.py` → `build_rationale_dataset.py` → `embed_rationales.py`, cùng 3 shell script trong `scripts/server/`.
+6. GPU server (CoT distillation): code cho mọi giai đoạn đã có (mục 2, mục 7.5); việc còn lại là chạy theo `docs/cot_distillation_plan.md` → `build_rationale_dataset.py` → `embed_rationales.py`.

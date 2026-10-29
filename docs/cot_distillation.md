@@ -1,6 +1,6 @@
 # Chưng cất reasoning từ LLM đa phương thức (CoT distillation)
 
-Trạng thái: **thiết kế, chưa có code**. Các script, config và trường dữ liệu nêu dưới đây là dự kiến.
+Trạng thái: **đã có code cho mọi phần** (mục 8), chưa chạy trên dữ liệu thật. Định nghĩa nhãn trong prompt (`data/rationale.py`, `LABEL_DEFINITIONS`) cần đối chiếu với hướng dẫn gán nhãn UIT DSC 2024 trước khi chạy cả tập.
 
 Liên quan: `reports/literature_review/README.md` (mục 1.1, 3.4, 3.5, 6). Kế hoạch chạy: `docs/cot_distillation_plan.md`.
 
@@ -303,18 +303,27 @@ Chạy teacher (không cho nhãn) trên cả public và private test, rồi đư
 
 ---
 
-## 8. Dự kiến code
+## 8. Code
 
 | File | Nội dung |
 |---|---|
-| `scripts/generate_rationales.py` | Sinh k reasoning mỗi mẫu, chạy tiếp được, lưu cache theo `prompt_version` |
-| `scripts/build_rationale_dataset.py` | Phân nhóm, chạy rationalization, xuất CSV để chấm, gộp kết quả chấm thành `rationale_dataset.json` |
-| `src/vimmsd/data/dataset.py` | Đọc `rationale_dataset.json`, thêm `text_sarcastic`, `image_sarcastic`, `e_rationale` vào batch |
-| `src/vimmsd/training/losses.py` | Loss phụ hai trục, loss căn chỉnh reasoning, NLL trên xác suất phân cấp |
-| `src/vimmsd/models/classifier.py` | Thêm `head.type: flat | hierarchical` (head S, C, T/I và phép nhân xác suất), hiệu chỉnh prior theo từng tầng |
-| `configs/distill_flat_*.yaml` | M1 và các cột (a)–(d) của hàng phẳng |
-| `configs/distill_hier_*.yaml` | M2 và các cột (a)–(d) của hàng phân cấp mềm |
-| `configs/hier_cascade.yaml` | Tái lập pipeline nối tiếp của Vu et al. để đối chiếu |
-| `scripts/eval_teacher.py`, `scripts/make_id_lists.py` | Đánh giá teacher, tạo danh sách id cho tập thử và các lô (thay cho notebook) |
-| `scripts/embed_rationales.py` | Mã hoá reasoning bằng PhoBERT đóng băng |
-| `scripts/run_experiments.py`, `scripts/summarize_results.py`, `configs/experiments/cot_distill*.yaml` | Chạy ma trận config × seed trên các GPU của server, tổng hợp kết quả |
+| `src/vimmsd/models/heads.py` | `HierarchicalHead` (S × C, trả log xác suất 4 lớp), `CascadeHead`, `compute_prior_shift` theo tầng |
+| `src/vimmsd/models/classifier.py` | `model.head` (`type`, `axis_heads`, `axis_targets`, `rationale_dim`), `forward_outputs`, `set_prior_shift` |
+| `src/vimmsd/training/losses.py` | `SarcasmLoss`: CE/focal (= NLL với hierarchical), λ_S, λ_axis (gold / teacher), λ_rat, loss cascade |
+| `src/vimmsd/training/trainer.py` | loss nhiều thành phần (log từng phần), `train.select_metric` / `select_exclude_labels` |
+| `src/vimmsd/data/rationale.py` | prompt CoT 4 bước, `TeacherVLM`, parse JSON, phân nhóm, chọn mẫu chấm, κ, gộp `rationale_dataset.json` |
+| `src/vimmsd/data/dataset.py` | `attach_rationales` (nhãn phụ teacher + embedding cho mẫu train đạt rubric), collator, `split_label_counts` |
+| `scripts/make_id_lists.py`, `generate_rationales.py`, `eval_teacher.py` | giai đoạn 1–2 |
+| `scripts/build_rationale_dataset.py` | `group` / `rationalize` / `export` / `kappa` / `merge` (giai đoạn 3–5) |
+| `scripts/embed_rationales.py` | mã hoá reasoning bằng PhoBERT đóng băng, trung bình token |
+| `scripts/evaluate.py` | `eval.prior_correction`: ghi thêm `<split>_metrics_prior.json` |
+| `scripts/train.py` | `train.eval_test: false` để không chấm private test sau mỗi run |
+| `scripts/run_experiments.py`, `summarize_results.py` | ma trận config × seed; `--extra-eval test` cho bước chấm cuối; cột `val+prior` |
+| `configs/distill_*.yaml`, `configs/hier_cascade.yaml`, `configs/experiments/cot_distill*.yaml` | ma trận mục 6.2 |
+| `tests/test_cot_distill.py` | head, loss, prior, Trainer thật với head mới, parse / phân nhóm / κ / gộp, dataset, config, plan |
+
+Khác thiết kế ban đầu:
+- **Cascade** (`hier_cascade.yaml`) chạy trong một model: head M và head R dùng chung backbone, head R chỉ học trên mẫu không phải multi, suy luận định tuyến cứng. Bài gốc dùng 2 model riêng và back-translation.
+- **Embedding reasoning** lấy trung bình token của PhoBERT (không phải `<s>`), văn bản không kèm nhãn kết luận.
+- **Nhãn phụ teacher thiếu**: mẫu not / text / image dùng nhãn suy từ nhãn gốc (hai nghĩa trùng nhau), mẫu multi thì bỏ.
+- **Nhánh 6.4** (reasoning làm đầu vào) chưa có code: `generate_rationales.py` sinh được reasoning cho public/private test, nhưng chưa có config đưa reasoning thành segment thứ 3.

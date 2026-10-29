@@ -1,0 +1,8 @@
+# Hàng phẳng, cột (c): head T/I học phán đoán "text / ảnh đứng riêng" của teacher (mẫu multi chưa có thì bỏ).
+inherit: distill_flat_b.yaml
+model:
+  head:
+    axis_targets: teacher
+data:
+  rationale:
+    use: true

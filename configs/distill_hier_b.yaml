@@ -1,0 +1,8 @@
+# Hàng phân cấp mềm, cột (b): + head T/I học nhãn suy từ nhãn gốc, xác suất T/I là đầu vào thêm của tầng C.
+inherit: distill_hier_a.yaml
+model:
+  head:
+    axis_heads: true
+    axis_targets: gold
+loss:
+  lambda_axis: 0.3

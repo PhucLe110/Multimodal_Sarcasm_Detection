@@ -5,6 +5,7 @@
     python scripts/run_experiments.py --plan ... --only fusion_concat --dry-run
 
 Định dạng plan: xem vimmsd/utils/experiments.py. Run đã có đủ kết quả thì bỏ qua (--rerun để chạy lại).
+--extra-eval test: chỉ chạy evaluate.py --split test cho các run đã train (bước chấm private test cuối cùng).
 Log mỗi run ở <output_dir>/<tên run>/run.log; trạng thái cả plan ở <output_dir>/_plans/<plan>/status.json.
 Chạy xong tự tổng hợp kết quả trên val (scripts/summarize_results.py để tổng hợp lại, kể cả test).
 Chạy trong tmux trên GPU server (CODEBASE.md mục 7.3)."""
@@ -28,6 +29,9 @@ def main():
     parser.add_argument("--only", nargs="*", default=[], help="chỉ chạy run có tên chứa một trong các chuỗi này")
     parser.add_argument("--rerun", action="store_true", help="chạy lại cả run đã có kết quả")
     parser.add_argument("--dry-run", action="store_true", help="chỉ in lệnh sẽ chạy")
+    parser.add_argument("--extra-eval", nargs="*", default=[], choices=["val", "test"],
+                        help="chạy thêm evaluate.py cho run đã train xong mà chưa có split này "
+                             "(vd --extra-eval test ở bước đánh giá cuối)")
     args = parser.parse_args()
 
     plan = load_plan(args.plan)
@@ -40,9 +44,13 @@ def main():
     for spec in selected:
         out_dir = out_dirs[spec.name]
         if not args.rerun and is_done(out_dir, plan["evaluate"]):
-            skipped.append(spec.name)
+            extra = [s for s in args.extra_eval if not (out_dir / f"{s}_predictions.csv").exists()]
+            if extra:
+                jobs.append(build_job(spec, out_dir, extra, train=False))
+            else:
+                skipped.append(spec.name)
             continue
-        jobs.append(build_job(spec, out_dir, plan["evaluate"], note=f"plan {plan['name']}"))
+        jobs.append(build_job(spec, out_dir, [*plan["evaluate"], *args.extra_eval], note=f"plan {plan['name']}"))
     print(f"plan {plan['name']}: {len(selected)} run, bỏ qua {len(skipped)} run đã xong, chạy {len(jobs)} run")
     for name in skipped:
         print("  bỏ qua", name)

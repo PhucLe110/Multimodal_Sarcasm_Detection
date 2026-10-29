@@ -1,0 +1,11 @@
+# Giai đoạn 0 (docs/cot_distillation_plan.md, cổng G0): cột (a)/(b), không cần teacher.
+#   python scripts/run_experiments.py --plan configs/experiments/cot_distill_stage0.yaml
+name: cot_distill_stage0
+seeds: [42, 1, 2]
+evaluate: [val]   # evaluate.py ghi thêm val_metrics_prior.json (eval.prior_correction trong distill_base)
+runs:
+  - configs/distill_flat_a.yaml
+  - configs/distill_flat_b.yaml
+  - configs/distill_hier_a.yaml
+  - configs/distill_hier_b.yaml
+  - configs/hier_cascade.yaml

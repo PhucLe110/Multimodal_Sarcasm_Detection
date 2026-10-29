@@ -1,0 +1,5 @@
+# Hàng phẳng, cột (a): head 4 lớp + CE, không loss phụ. Mốc của M1.
+inherit: distill_base.yaml
+model:
+  head:
+    type: flat

@@ -78,19 +78,21 @@ def run_output_dir(spec):
 
 
 def expected_files(evaluate):
-    return ["test_metrics.json", *(f"{split}_predictions.csv" for split in evaluate)]
+    # results_row.md: train.py ghi ở cuối run, kể cả khi train.eval_test=false (không có test_metrics.json)
+    return ["results_row.md", *(f"{split}_predictions.csv" for split in evaluate)]
 
 
 def is_done(out_dir, evaluate):
     return all((Path(out_dir) / f).exists() for f in expected_files(evaluate))
 
 
-def build_job(spec, out_dir, evaluate, note="", python=sys.executable):
-    """Job train (+ evaluate cho từng split), log ở <out_dir>/run.log. Xong thì xoá last.pt cho đỡ tốn đĩa."""
+def build_job(spec, out_dir, evaluate, note="", python=sys.executable, train=True):
+    """Job train (+ evaluate cho từng split), log ở <out_dir>/run.log. Xong thì xoá last.pt cho đỡ tốn đĩa.
+    train=False: chỉ chạy evaluate (run đã train xong, vd chấm private test ở bước cuối), log ở eval.log."""
     out_dir = Path(out_dir)
     overrides = ["--override", *spec.overrides]
     commands = [[python, "scripts/train.py", "--config", str(spec.config), *overrides,
-                 "--note", note or f"{spec.group} seed {spec.seed}"]]
+                 "--note", note or f"{spec.group} seed {spec.seed}"]] if train else []
     commands += [[python, "scripts/evaluate.py", "--config", str(spec.config), "--split", split, *overrides]
                  for split in evaluate]
 
@@ -101,7 +103,7 @@ def build_job(spec, out_dir, evaluate, note="", python=sys.executable):
         (out_dir / "last.pt").unlink(missing_ok=True)  # chỉ cần để resume giữa run
         return None
 
-    return Job(spec.name, commands, out_dir / "run.log", check=check)
+    return Job(spec.name, commands, out_dir / ("run.log" if train else "eval.log"), check=check)
 
 
 def _read_json(path):
@@ -132,8 +134,10 @@ def collect_rows(specs, out_dirs, with_test=False):
         if val is None:
             continue
         row = {"run": spec.name, "group": spec.group, "seed": spec.seed, **_split_columns("val", val)}
+        row.update(_split_columns("val+prior", _read_json(out_dir / "val_metrics_prior.json")))
         if with_test:
             row.update(_split_columns("test", _read_json(out_dir / "test_metrics.json")))
+            row.update(_split_columns("test+prior", _read_json(out_dir / "test_metrics_prior.json")))
         rows.append(row)
     return rows
 
@@ -181,9 +185,9 @@ def summarize(plan, specs, out_dirs, with_test=False):
     rows = collect_rows(specs, out_dirs, with_test)
     table = aggregate(rows)
     plan_dir = plan_output_dir(out_dirs)
-    columns = ["val macro-F1", "val weighted-F1", f"val macro-F1 (bỏ {RARE})"]
-    if with_test:
-        columns += ["test macro-F1", "test weighted-F1", f"test macro-F1 (bỏ {RARE})"]
+    prefixes = ["val", "val+prior"] + (["test", "test+prior"] if with_test else [])
+    columns = [f"{p} {m}" for p in prefixes for m in ("macro-F1", "weighted-F1", f"macro-F1 (bỏ {RARE})")]
+    columns = [c for c in columns if any(f"{c} mean" in row for row in table)]
     md = to_markdown(table, columns)
     if rows:
         write_csv(plan_dir / plan["name"] / "runs.csv", rows)

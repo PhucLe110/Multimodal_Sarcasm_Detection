@@ -1,0 +1,8 @@
+# Hàng phân cấp mềm, cột (a): tầng S (có châm biếm không) × tầng C (text / image / multi), NLL 4 lớp,
+# chưa có teacher. So với distill_flat_a: chỉ tách tầng (và hiệu chỉnh prior theo tầng) có giúp không.
+inherit: distill_base.yaml
+model:
+  head:
+    type: hierarchical
+loss:
+  lambda_s: 0.0

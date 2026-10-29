@@ -14,6 +14,19 @@ from vimmsd.utils.checkpoint import load_checkpoint, resolve_resume_path, save_c
 logger = logging.getLogger(__name__)
 
 
+def selection_score(metrics, metric="macro_f1", exclude=()):
+    """Điểm chọn checkpoint trên val. macro_f1 với `exclude` (vd [text-sarcasm], chỉ 1 mẫu trong val) tính
+    trung bình F1 các lớp còn lại; weighted_f1 lấy thẳng từ metrics."""
+    if metric == "weighted_f1":
+        return metrics["weighted_f1"]
+    if metric != "macro_f1":
+        raise ValueError(f"train.select_metric phải là macro_f1 | weighted_f1, nhận được {metric!r}")
+    if not exclude:
+        return metrics["macro_f1"]
+    f1 = [m["f1"] for name, m in metrics["per_class"].items() if name not in set(exclude)]
+    return sum(f1) / len(f1)
+
+
 def move_to_device(batch, device):
     return {k: v.to(device, non_blocking=True) if torch.is_tensor(v) else v for k, v in batch.items()}
 
@@ -57,6 +70,8 @@ class Trainer:
         self.max_grad_norm = t.max_grad_norm
         self.patience = t.early_stop_patience
         self.use_amp = t.amp and self.device.type == "cuda"
+        self.select_metric = t.get("select_metric", "macro_f1")
+        self.select_exclude = list(t.get("select_exclude_labels") or [])
 
         self.optimizer = torch.optim.AdamW(model.param_groups(t.lr_encoder, t.lr_head, t.weight_decay))
         steps = math.ceil(len(loaders["train"]) / self.grad_accum) * self.epochs
@@ -84,11 +99,18 @@ class Trainer:
         self.optimizer.zero_grad(set_to_none=True)
         loader = self.loaders["train"]
         pbar = tqdm(loader, desc=f"epoch {epoch + 1}/{self.epochs}", leave=False)
+        part_sums = {}
+        uses_outputs = getattr(self.loss_fn, "uses_outputs", False)
         for step, batch in enumerate(pbar):
             batch = move_to_device(batch, self.device)
             with torch.autocast(self.device.type, dtype=torch.float16, enabled=self.use_amp):
-                logits = self.model(batch)
-            loss = self.loss_fn(logits.float(), batch["labels"])
+                out = self.model.forward_outputs(batch) if uses_outputs else self.model(batch)
+            if uses_outputs:
+                loss, parts = self.loss_fn(out, batch)
+                for k, v in parts.items():
+                    part_sums[k] = part_sums.get(k, 0.0) + v * len(batch["labels"])
+            else:
+                loss = self.loss_fn(out.float(), batch["labels"])
             self.scaler.scale(loss / self.grad_accum).backward()
 
             if (step + 1) % self.grad_accum == 0 or step + 1 == len(loader):
@@ -102,13 +124,23 @@ class Trainer:
             total += loss.item() * len(batch["labels"])
             n += len(batch["labels"])
             pbar.set_postfix(loss=f"{total / n:.4f}")
+        if len(part_sums) > 1:  # chỉ log khi có loss phụ
+            logger.info("epoch %d | loss thành phần %s", epoch + 1,
+                        " ".join(f"{k}={v / max(n, 1):.4f}" for k, v in part_sums.items()))
         return total / max(n, 1)
 
     def predict(self, loader):
         return predict(self.model, loader, self.device, self.use_amp)
 
-    def evaluate(self, split="val"):
-        out = self.predict(self.loaders[split])
+    def evaluate(self, split="val", prior_shift=None):
+        """prior_shift: dict từ heads.compute_prior_shift để đánh giá có hiệu chỉnh prior (tắt lại sau khi xong)."""
+        if prior_shift is not None:
+            self.model.set_prior_shift(prior_shift)
+        try:
+            out = self.predict(self.loaders[split])
+        finally:
+            if prior_shift is not None:
+                self.model.set_prior_shift(None)
         return compute_metrics(out["labels"], out["preds"], self.labels), out
 
     def fit(self):
@@ -118,12 +150,17 @@ class Trainer:
         for epoch in range(self.start_epoch, self.epochs):
             train_loss = self.train_epoch(epoch)
             metrics, _ = self.evaluate("val")
-            self.history.append({"epoch": epoch, "train_loss": train_loss, "val_macro_f1": metrics["macro_f1"]})
-            logger.info("epoch %d | train loss %.4f | val %s", epoch + 1, train_loss, format_metrics(metrics))
+            score = selection_score(metrics, self.select_metric, self.select_exclude)
+            self.history.append({"epoch": epoch, "train_loss": train_loss, "val_macro_f1": metrics["macro_f1"],
+                                 "val_select": score})
+            logger.info("epoch %d | train loss %.4f | val chọn checkpoint (%s) %.4f | val %s", epoch + 1, train_loss,
+                        self.select_metric + (f" bỏ {self.select_exclude}" if self.select_exclude else ""), score,
+                        format_metrics(metrics))
 
-            improved = metrics["macro_f1"] > self.best_f1
+            improved = score > self.best_f1
             if improved:
-                self.best_f1 = metrics["macro_f1"]
+                self.best_f1 = score
+                self.best_val_metrics = metrics
                 self.bad_epochs = 0
                 save_checkpoint(self.output_dir / "best.pt", self.model, epoch=epoch, best_f1=self.best_f1,
                                 config=self.cfg.to_dict())
@@ -136,12 +173,16 @@ class Trainer:
                             history=self.history, config=self.cfg.to_dict())
 
             if self.patience and self.bad_epochs >= self.patience:
-                logger.info("early stopping: val macro-F1 không cải thiện sau %d epoch", self.patience)
+                logger.info("early stopping: val không cải thiện sau %d epoch", self.patience)
                 break
         peak_vram_gb = None
         if torch.cuda.is_available():
             peak_vram_gb = torch.cuda.max_memory_allocated() / (1024 ** 3)
-        return {"best_val_macro_f1": self.best_f1, "train_minutes": (time.time() - start) / 60,
+        best = getattr(self, "best_val_metrics", None)
+        if best is None and (self.output_dir / "best_val_metrics.json").exists():  # resume: best từ lần chạy trước
+            best = json.loads((self.output_dir / "best_val_metrics.json").read_text())
+        return {"best_val_macro_f1": best["macro_f1"] if best else self.best_f1, "best_val_select": self.best_f1,
+                "train_minutes": (time.time() - start) / 60,
                 "peak_vram_gb": peak_vram_gb, "history": self.history}
 
     def load_best(self):

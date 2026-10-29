@@ -57,6 +57,13 @@ data:
     # cache trung gian của notebook 01b, mỗi bước một file; đổi model OCR/VLM thì dùng thư mục cache mới
     ocr_cache: ocr.json
     description_cache: description.json
+  # CoT distillation (docs/cot_distillation.md): reasoning của teacher đạt rubric, chỉ gắn vào mẫu train
+  rationale:
+    use: false
+    dir: null                      # null = <paths.cache_dir>/rationales
+    file: rationale_dataset.json   # scripts/build_rationale_dataset.py merge
+    embeddings: rationale_embeddings.npy   # scripts/embed_rationales.py, kèm rationale_embeddings_ids.json
+    exclude_groups: []             # vd [3]: ablation bỏ reasoning của bước rationalization
 
 model:
   modality: concat    # text | image | concat | cross_attn
@@ -69,6 +76,12 @@ model:
     freeze: true
     unfreeze_last_n: 0   # như trên; CLIP mở thêm post_layernorm, ViT mở thêm layernorm cuối
   fusion: {}
+  head:
+    type: flat            # flat | hierarchical (M2: S × C) | cascade (định tuyến cứng kiểu Vu et al.), xem models/heads.py
+    axis_heads: false     # head T/I: text / ảnh đứng riêng có mỉa mai không (loss.lambda_axis)
+    axis_targets: gold    # gold: suy từ nhãn gốc | teacher: phán đoán của teacher (cần data.rationale.use)
+    rationale_dim: 0      # > 0: phép chiếu sang không gian embedding reasoning (loss.lambda_rat), PhoBERT-base = 768
+    cascade_threshold: 0.5
   head_hidden: 512
   dropout: 0.2
 
@@ -77,6 +90,9 @@ loss:
   class_weight: null  # null | inverse | sqrt_inverse | effective
   gamma: 2.0          # chỉ dùng cho focal
   label_smoothing: 0.0
+  lambda_s: 0.0       # hierarchical: BCE thêm cho tầng S (có châm biếm không)
+  lambda_axis: 0.0    # BCE của head T/I
+  lambda_rat: 0.0     # 1 - cos(phép chiếu vector fusion, embedding reasoning)
 
 train:
   epochs: 10
@@ -92,3 +108,9 @@ train:
   num_workers: 2
   early_stop_patience: 3
   resume_from: null   # file .pt hoặc thư mục chứa last.pt
+  select_metric: macro_f1      # macro_f1 | weighted_f1: điểm val để chọn best.pt và early stopping
+  select_exclude_labels: []    # macro_f1 bỏ các lớp này, vd [text-sarcasm] (val chỉ có 1 mẫu)
+  eval_test: true              # chấm test (private test) cuối mỗi run; false = chỉ chấm một lần ở bước cuối
+
+eval:
+  prior_correction: false      # evaluate.py ghi thêm kết quả hiệu chỉnh prior theo val (hậu tố _prior)

@@ -96,10 +96,14 @@ def test_build_job_commands_and_check(plan_dir, tmp_path):
 
     out.mkdir()
     assert "thiếu" in job.check() and not is_done(out, plan["evaluate"])
-    for f in ("test_metrics.json", "val_predictions.csv", "test_predictions.csv", "last.pt"):
+    for f in ("results_row.md", "val_predictions.csv", "test_predictions.csv", "last.pt"):
         (out / f).write_text("{}")
     assert job.check() is None and not (out / "last.pt").exists()
     assert is_done(out, plan["evaluate"])
+
+    # chỉ chấm thêm (run đã train xong): không có lệnh train, log riêng
+    extra = build_job(spec, out, ["test"], python="py", train=False)
+    assert [c[1] for c in extra.commands] == ["scripts/evaluate.py"] and extra.log == out / "eval.log"
 
 
 def fake_metrics(macro, rare_f1=0.0):

@@ -8,7 +8,7 @@ from pathlib import Path
 from vimmsd.data.dataset import (ViMMSDCollator, build_dataloaders, build_datasets, class_counts,
                                  stage_preprocessed_cache)
 from vimmsd.models.classifier import MODALITY_NEEDS, build_model
-from vimmsd.training.losses import build_loss
+from vimmsd.training.losses import build_training_loss
 from vimmsd.training.metrics import format_metrics, plot_confusion_matrix
 from vimmsd.training.trainer import Trainer
 from vimmsd.utils.config import find_project_root, load_config
@@ -62,7 +62,7 @@ def main():
              len(datasets["train"]), len(datasets["val"]), len(datasets["test"]),
              dict(zip(cfg.data.labels, counts)))
 
-    trainer = Trainer(model, build_loss(cfg.loss, counts), loaders, cfg, output_dir)
+    trainer = Trainer(model, build_training_loss(cfg, counts), loaders, cfg, output_dir)
     summary = trainer.fit()
 
     trainer.load_best()
@@ -73,11 +73,15 @@ def main():
         aux_note = (f"caption_weight={weights['caption']:.1f} ocr_weight={weights['ocr']:.3f} "
                     f"description_weight={weights['description']:.3f}")
         log.info("trọng số feature: %s", aux_note)
-    test_metrics, _ = trainer.evaluate("test")
-    log.info("test (best checkpoint)\n%s", format_metrics(test_metrics))
-    (output_dir / "test_metrics.json").write_text(json.dumps(test_metrics, indent=2))
-    plot_confusion_matrix(test_metrics["confusion_matrix"], cfg.data.labels,
-                          output_dir / "confusion_matrix_test.png", title=cfg.name)
+    test_metrics = None
+    # train.eval_test: false (các config CoT distillation): không chấm private test sau mỗi run, chỉ chấm một lần
+    # ở bước cuối bằng run_experiments.py --extra-eval test (docs/cot_distillation_plan.md giai đoạn 6)
+    if cfg.train.get("eval_test", True):
+        test_metrics, _ = trainer.evaluate("test")
+        log.info("test (best checkpoint)\n%s", format_metrics(test_metrics))
+        (output_dir / "test_metrics.json").write_text(json.dumps(test_metrics, indent=2))
+        plot_confusion_matrix(test_metrics["confusion_matrix"], cfg.data.labels,
+                              output_dir / "confusion_matrix_test.png", title=cfg.name)
 
     note = args.note
     if aux_note:
@@ -86,7 +90,7 @@ def main():
         vram = f"peak VRAM {summary['peak_vram_gb']:.2f} GB"
         note = f"{note} | {vram}" if note else vram
     row = (f"| {datetime.now():%Y-%m-%d} | `{cfg.name}` | `{commit}` | {cfg.env} | "
-           f"{summary['best_val_macro_f1']:.4f} | {test_metrics['macro_f1']:.4f} | "
+           f"{summary['best_val_macro_f1']:.4f} | {test_metrics['macro_f1'] if test_metrics else float('nan'):.4f} | "
            f"{summary['train_minutes']:.1f} | {note} |")
     # trên Kaggle/Colab repo là bản clone tạm, nên ghi thêm vào output_dir để copy dòng này về reports/results.md
     append_result(output_dir / "results_row.md", row)
