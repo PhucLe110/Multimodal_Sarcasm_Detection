@@ -1,0 +1,8 @@
+# Hàng phân cấp mềm, cột (c): head T/I học phán đoán của teacher.
+inherit: distill_hier_b.yaml
+model:
+  head:
+    axis_targets: teacher
+data:
+  rationale:
+    use: true

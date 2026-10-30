@@ -1,0 +1,7 @@
+# M2 (CoT distillation + hierarchical), cột (d): + kéo vector fusion về embedding reasoning của teacher.
+inherit: distill_hier_c.yaml
+model:
+  head:
+    rationale_dim: 768
+loss:
+  lambda_rat: 0.3

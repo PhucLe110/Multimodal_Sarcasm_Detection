@@ -4,6 +4,7 @@ import shutil
 from collections import Counter
 from pathlib import Path
 
+import numpy as np
 import torch
 from PIL import Image
 from sklearn.model_selection import train_test_split
@@ -86,8 +87,11 @@ def split_records(records, val_ratio, test_ratio, seed):
 class ViMMSDDataset(Dataset):
     def __init__(self, records, text_preprocessor=None, image_transform=None,
                  load_image=True, cache_dir=None, use_image_text=False, separate_image_text=False,
-                 missing_image_color=(0, 0, 0)):
+                 missing_image_color=(0, 0, 0), rationale_dim=None):
         self.records = records
+        # CoT distillation: rationale_dim != None thì mỗi item có nhãn phụ của teacher và embedding reasoning
+        # (vector 0 + cờ 0 khi mẫu không có), xem attach_rationales
+        self.rationale_dim = rationale_dim
         self.image_transform = image_transform
         self.load_image = load_image
         self.missing_image_color = tuple(missing_image_color)
@@ -142,6 +146,14 @@ class ViMMSDDataset(Dataset):
             item["description"] = self.descriptions[idx]
         elif self.image_texts is not None:
             item["image_text"] = self.image_texts[idx]
+        if self.rationale_dim is not None:
+            axis = rec.get("teacher_axis")
+            item["axis_teacher"] = axis if axis is not None else (0.0, 0.0)
+            item["axis_teacher_present"] = float(axis is not None)
+            if self.rationale_dim:
+                emb = rec.get("rationale_emb")
+                item["rationale_emb"] = emb if emb is not None else np.zeros(self.rationale_dim, dtype=np.float32)
+                item["rationale_present"] = float(emb is not None)
         if self.load_image:
             img, missing = self._open_image(rec["image_path"])
             if self.image_transform is not None:
@@ -205,6 +217,12 @@ class ViMMSDCollator:
             batch["pixel_values"] = self.image_processor(images=images, return_tensors="pt")["pixel_values"]
         if "img_missing" in items[0]:
             batch["img_missing"] = torch.tensor([it["img_missing"] for it in items], dtype=torch.long)
+        if "axis_teacher" in items[0]:
+            batch["axis_teacher"] = torch.tensor([it["axis_teacher"] for it in items], dtype=torch.float)
+            batch["axis_teacher_mask"] = torch.tensor([it["axis_teacher_present"] for it in items])
+        if "rationale_emb" in items[0]:
+            batch["rationale_emb"] = torch.from_numpy(np.stack([it["rationale_emb"] for it in items]).astype(np.float32))
+            batch["rationale_mask"] = torch.tensor([it["rationale_present"] for it in items])
         return batch
 
 
@@ -275,12 +293,12 @@ def collect_captions(cfg):
 
 
 def build_text_cache(cfg):
-    """Chuẩn hóa toàn bộ caption và ghi 01a_text_preprocessing.json vào paths.cache_dir.
+    """Chuẩn hóa toàn bộ caption và ghi data.text.cache_file vào text_cache_dir(cfg).
 
-    Notebook train đọc lại file này qua TextPreprocessor.process_all, nên không xử lý lại từ đầu.
+    Train đọc lại file này qua TextPreprocessor.process_all, nên không xử lý lại từ đầu.
     """
     pre = TextPreprocessor.from_config(cfg.data.text)
-    out_dir = Path(cfg.paths.cache_dir)
+    out_dir = Path(text_cache_dir(cfg))
     captions, used = collect_captions(cfg)
     pre.process_all(captions, cache_dir=out_dir)
     return pre._cache_file(out_dir), len(captions), used
@@ -426,8 +444,69 @@ def build_image_transform(cfg, train, fill):
     return transforms.Compose(steps) if steps else None
 
 
+def uses_rationale(cfg):
+    return bool((cfg.data.get("rationale") or {}).get("use"))
+
+
+def rationale_dir(cfg):
+    """Thư mục reasoning: data.rationale.dir, mặc định <paths.cache_dir>/rationales."""
+    r = cfg.data.get("rationale") or {}
+    return Path(r.get("dir") or Path(cfg.paths.cache_dir) / "rationales")
+
+
+def attach_rationales(records, cfg):
+    """Gắn nhãn phụ của teacher (`teacher_axis` = (text_sarcastic, image_sarcastic)) và embedding reasoning
+    (`rationale_emb`) vào record train có reasoning đạt rubric. Trả về (records mới, số chiều embedding, số mẫu gắn được).
+    Embedding chỉ đọc khi loss.lambda_rat > 0."""
+    from vimmsd.data.rationale import load_rationale_dataset
+
+    r = cfg.data.rationale
+    root = rationale_dir(cfg)
+    samples, _ = load_rationale_dataset(root / r.get("file", "rationale_dataset.json"),
+                                        exclude_groups=r.get("exclude_groups") or [])
+    embeddings, dim = {}, 0
+    if cfg.loss.get("lambda_rat"):
+        emb_path = root / r.get("embeddings", "rationale_embeddings.npy")
+        matrix = np.load(emb_path).astype(np.float32)
+        ids = json.loads(emb_path.with_name(emb_path.stem + "_ids.json").read_text(encoding="utf-8"))
+        if len(ids) != len(matrix):
+            raise ValueError(f"{emb_path}: {len(matrix)} vector nhưng {len(ids)} id")
+        embeddings, dim = {str(sid): matrix[k] for k, sid in enumerate(ids)}, matrix.shape[1]
+        expected = (cfg.model.get("head") or {}).get("rationale_dim")
+        if expected and int(expected) != dim:
+            raise ValueError(f"model.head.rationale_dim={expected} nhưng embedding reasoning có {dim} chiều")
+    out, n = [], 0
+    for rec in records:
+        s = samples.get(rec["id"])
+        if s is None:
+            out.append(rec)
+            continue
+        extra = {"teacher_axis": (float(s["text_sarcastic"]), float(s["image_sarcastic"]))}
+        if rec["id"] in embeddings:
+            extra["rationale_emb"] = embeddings[rec["id"]]
+        out.append({**rec, **extra})
+        n += 1
+    logger.info("reasoning của teacher: %d/%d mẫu train có nhãn phụ, %d có embedding (%d chiều)",
+                n, len(records), sum("rationale_emb" in r for r in out), dim)
+    return out, dim, n
+
+
+def split_label_counts(cfg, splits=("train", "val")):
+    """Số mẫu mỗi lớp của từng split (để tính prior cho hiệu chỉnh, xem heads.compute_prior_shift)."""
+    records = load_all_records(cfg)
+    n = len(cfg.data.labels)
+    out = {}
+    for split in splits:
+        counts = Counter(r["label"] for r in records.get(split, []) if r["label"] != IGNORE_LABEL)
+        out[split] = [counts.get(i, 0) for i in range(n)]
+    return out
+
+
 def build_datasets(cfg, needs_text=True, needs_image=True, splits=("train", "val", "test")):
     records = load_all_records(cfg)
+    rationale_dim = None
+    if uses_rationale(cfg) and "train" in splits:
+        records["train"], rationale_dim, _ = attach_rationales(records["train"], cfg)
     text_pre = TextPreprocessor.from_config(cfg.data.text) if needs_text else None
     # màu viền khi pad và màu ảnh thay thế ảnh lỗi: mean của encoder, sau normalize gần 0
     fill = encoder_mean_color(cfg.model.image_encoder.name) if needs_image else (0, 0, 0)
@@ -444,6 +523,7 @@ def build_datasets(cfg, needs_text=True, needs_image=True, splits=("train", "val
             use_image_text=uses_image_text(cfg) and needs_text,
             separate_image_text=separates_image_text(cfg) and needs_text,
             missing_image_color=fill,
+            rationale_dim=rationale_dim if split == "train" else None,
         )
     return datasets
 

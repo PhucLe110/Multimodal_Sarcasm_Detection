@@ -1,0 +1,60 @@
+# Giai đoạn 6: grid λ_axis × λ_rat trên cột (d), 1 seed, chọn theo val rồi cố định cho mọi ô.
+#   python scripts/run_experiments.py --plan configs/experiments/cot_distill_grid.yaml
+name: cot_distill_grid
+seeds: [42]
+evaluate: [val]
+runs:
+  - config: configs/distill_flat_d.yaml
+    name: grid_flat_ax01_rat01
+    overrides: [loss.lambda_axis=0.1, loss.lambda_rat=0.1]
+  - config: configs/distill_flat_d.yaml
+    name: grid_flat_ax01_rat03
+    overrides: [loss.lambda_axis=0.1, loss.lambda_rat=0.3]
+  - config: configs/distill_flat_d.yaml
+    name: grid_flat_ax01_rat10
+    overrides: [loss.lambda_axis=0.1, loss.lambda_rat=1.0]
+  - config: configs/distill_flat_d.yaml
+    name: grid_flat_ax03_rat01
+    overrides: [loss.lambda_axis=0.3, loss.lambda_rat=0.1]
+  - config: configs/distill_flat_d.yaml
+    name: grid_flat_ax03_rat03
+    overrides: [loss.lambda_axis=0.3, loss.lambda_rat=0.3]
+  - config: configs/distill_flat_d.yaml
+    name: grid_flat_ax03_rat10
+    overrides: [loss.lambda_axis=0.3, loss.lambda_rat=1.0]
+  - config: configs/distill_flat_d.yaml
+    name: grid_flat_ax10_rat01
+    overrides: [loss.lambda_axis=1.0, loss.lambda_rat=0.1]
+  - config: configs/distill_flat_d.yaml
+    name: grid_flat_ax10_rat03
+    overrides: [loss.lambda_axis=1.0, loss.lambda_rat=0.3]
+  - config: configs/distill_flat_d.yaml
+    name: grid_flat_ax10_rat10
+    overrides: [loss.lambda_axis=1.0, loss.lambda_rat=1.0]
+  - config: configs/distill_hier_d.yaml
+    name: grid_hier_ax01_rat01
+    overrides: [loss.lambda_axis=0.1, loss.lambda_rat=0.1]
+  - config: configs/distill_hier_d.yaml
+    name: grid_hier_ax01_rat03
+    overrides: [loss.lambda_axis=0.1, loss.lambda_rat=0.3]
+  - config: configs/distill_hier_d.yaml
+    name: grid_hier_ax01_rat10
+    overrides: [loss.lambda_axis=0.1, loss.lambda_rat=1.0]
+  - config: configs/distill_hier_d.yaml
+    name: grid_hier_ax03_rat01
+    overrides: [loss.lambda_axis=0.3, loss.lambda_rat=0.1]
+  - config: configs/distill_hier_d.yaml
+    name: grid_hier_ax03_rat03
+    overrides: [loss.lambda_axis=0.3, loss.lambda_rat=0.3]
+  - config: configs/distill_hier_d.yaml
+    name: grid_hier_ax03_rat10
+    overrides: [loss.lambda_axis=0.3, loss.lambda_rat=1.0]
+  - config: configs/distill_hier_d.yaml
+    name: grid_hier_ax10_rat01
+    overrides: [loss.lambda_axis=1.0, loss.lambda_rat=0.1]
+  - config: configs/distill_hier_d.yaml
+    name: grid_hier_ax10_rat03
+    overrides: [loss.lambda_axis=1.0, loss.lambda_rat=0.3]
+  - config: configs/distill_hier_d.yaml
+    name: grid_hier_ax10_rat10
+    overrides: [loss.lambda_axis=1.0, loss.lambda_rat=1.0]

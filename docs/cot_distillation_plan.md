@@ -179,21 +179,21 @@ Kết quả ghi vào `reports/results.md`. Bản tổng hợp riêng đặt ở 
 
 | # | Việc | Phụ thuộc | Trạng thái |
 |---|---|---|---|
-| S.1 | Cài server (`setup_env.sh`), tải data + cache có sẵn, `pytest` | – | chưa làm |
-| S.2 | `run_experiments.py`, `summarize_results.py`, `preprocess_text.py` | – | chưa làm |
-| 0.1 | Head phân cấp + loss + test | – | chưa làm |
-| 0.2 | Nhãn phụ từ nhãn gốc + hiệu chỉnh prior | – | chưa làm |
-| 0.3 | Chạy (a)/(b) phẳng, phân cấp, cascade × 3 seed | S.1, S.2, 0.1, 0.2 | chưa làm |
+| S.1 | Cài server (`setup_env.sh`), tải data + cache có sẵn (`prepare_data.sh`), chạy plan `smoke` | – | đã có script, chưa chạy trên server |
+| S.2 | `run_experiments.py`, `summarize_results.py`, `preprocess_text.py` | – | xong (có test), chưa chạy trên server |
+| 0.1 | Head phân cấp + loss + test | – | có code + test |
+| 0.2 | Nhãn phụ từ nhãn gốc + hiệu chỉnh prior | – | có code + test |
+| 0.3 | Chạy plan `phase4_baselines` (mốc), rồi (a)/(b) phẳng, phân cấp, cascade × 3 seed | S.1, S.2, 0.1, 0.2 | chưa làm |
 | 1.1 | Đối chiếu định nghĩa nhãn, viết prompt v1 | – | chưa làm |
-| 1.2 | `generate_rationales.py`, `eval_teacher.py`, `make_id_lists.py` | – | chưa làm |
+| 1.2 | `generate_rationales.py`, `eval_teacher.py`, `make_id_lists.py` | – | có code + test |
 | 1.3 | prompt-dev, pilot-eval, zero-shot trên val → G1 | 1.1, 1.2, 0.3 | chưa làm |
 | 2.1 | Sinh lô 1–3 | G1 | chưa làm |
-| 3.1 | `build_rationale_dataset.py` group/rationalize/export | 2.1 (lô 1) | chưa làm |
-| 4.1 | Hiệu chỉnh rubric (50 mẫu, κ) | 3.1 | chưa làm |
+| 3.1 | `build_rationale_dataset.py` group/rationalize/export | 2.1 (lô 1) | có code + test |
+| 4.1 | Hiệu chỉnh rubric (50 mẫu, κ) | 3.1 | có script κ, chưa chấm |
 | 4.2 | Chấm các lô | 4.1 | chưa làm |
-| 5.1 | `rationale_dataset.json` + `embed_rationales.py` + upload Kaggle dataset | 4.2 | chưa làm |
-| 5.2 | Dataset đọc reasoning + test | – | chưa làm |
+| 5.1 | `rationale_dataset.json` + `embed_rationales.py` + upload Kaggle dataset | 4.2 | có script, chưa chạy |
+| 5.2 | Dataset đọc reasoning + test | – | có code + test |
 | 6.1 | Grid λ trên val | 5.1, 5.2 | chưa làm |
 | 6.2 | Ma trận đầy đủ × 3 seed, đánh giá private test → G3 | 6.1 | chưa làm |
-| 7.1 | (tuỳ chọn) reasoning làm đầu vào | 6.2 | chưa làm |
+| 7.1 | (tuỳ chọn) reasoning làm đầu vào | 6.2 | chưa có code |
 | 8.1 | Báo cáo → G4 | 6.2 | chưa làm |

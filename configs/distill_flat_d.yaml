@@ -1,0 +1,7 @@
+# M1 (CoT distillation, đầu ra phẳng), cột (d): + kéo vector fusion về embedding reasoning của teacher.
+inherit: distill_flat_c.yaml
+model:
+  head:
+    rationale_dim: 768   # PhoBERT-base, khớp scripts/embed_rationales.py
+loss:
+  lambda_rat: 0.3

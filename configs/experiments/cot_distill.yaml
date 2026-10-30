@@ -1,0 +1,22 @@
+# Giai đoạn 6: ma trận đầy đủ (docs/cot_distillation.md mục 6.2), 3 seed. Sửa loss.lambda_axis / lambda_rat
+# trong distill_flat_d.yaml, distill_hier_d.yaml theo kết quả cot_distill_grid trước khi chạy.
+#   python scripts/run_experiments.py --plan configs/experiments/cot_distill.yaml
+#   python scripts/summarize_results.py --plan configs/experiments/cot_distill.yaml
+# Bước cuối, chỉ sau khi đã chốt mọi thứ trên val:
+#   python scripts/run_experiments.py --plan configs/experiments/cot_distill.yaml --extra-eval test
+#   python scripts/summarize_results.py --plan configs/experiments/cot_distill.yaml --with-test
+name: cot_distill
+seeds: [42, 1, 2]
+evaluate: [val]
+runs:
+  - configs/distill_flat_a.yaml
+  - configs/distill_flat_b.yaml
+  - configs/distill_flat_c.yaml
+  - configs/distill_flat_d.yaml
+  - configs/distill_flat_d_nogroup3.yaml
+  - configs/distill_hier_a.yaml
+  - configs/distill_hier_b.yaml
+  - configs/distill_hier_c.yaml
+  - configs/distill_hier_d.yaml
+  - configs/distill_hier_d_nogroup3.yaml
+  - configs/hier_cascade.yaml

@@ -1,0 +1,5 @@
+# Ablation của M1: bỏ reasoning sinh bằng rationalization (nhóm 3), đo tác dụng của bước này.
+inherit: distill_flat_d.yaml
+data:
+  rationale:
+    exclude_groups: [3]

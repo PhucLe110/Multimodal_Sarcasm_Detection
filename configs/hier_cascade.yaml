@@ -1,0 +1,8 @@
+# Tái lập kiểu pipeline phân cấp nối tiếp của Vu et al. (2025, Approach 3) trên cùng backbone: head M (multi hay
+# không, mọi mẫu) rồi head R (not / text / image, chỉ train trên mẫu không phải multi), suy luận định tuyến cứng.
+# Khác bài gốc: chung một model và backbone, không back-translation. Để đối chiếu với phân cấp mềm (distill_hier_*).
+inherit: distill_base.yaml
+model:
+  head:
+    type: cascade
+    cascade_threshold: 0.5

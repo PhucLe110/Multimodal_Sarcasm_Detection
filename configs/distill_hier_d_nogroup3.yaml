@@ -1,0 +1,5 @@
+# Ablation của M2: bỏ reasoning sinh bằng rationalization (nhóm 3).
+inherit: distill_hier_d.yaml
+data:
+  rationale:
+    exclude_groups: [3]

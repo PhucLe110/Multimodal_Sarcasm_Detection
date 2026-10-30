@@ -2,6 +2,7 @@
 
 --split test/val: xuất metrics, confusion matrix, file dự đoán (kèm xác suất) để phân tích lỗi.
 --split public_test / private_test: xuất results.json theo định dạng nộp bài UIT DSC.
+--prior-correction (hoặc eval.prior_correction trong config): ghi thêm bản hiệu chỉnh prior theo val, hậu tố _prior.
 Với data.split=official, val = public test và test = private test nên metrics lấy qua --split val / test."""
 import argparse
 import json
@@ -11,8 +12,10 @@ from pathlib import Path
 import pandas as pd
 import torch
 
-from vimmsd.data.dataset import ViMMSDCollator, build_dataloaders, build_datasets, stage_preprocessed_cache
+from vimmsd.data.dataset import (ViMMSDCollator, build_dataloaders, build_datasets, split_label_counts,
+                                 stage_preprocessed_cache)
 from vimmsd.models.classifier import MODALITY_NEEDS, build_model
+from vimmsd.models.heads import compute_prior_shift
 from vimmsd.training.metrics import compute_metrics, format_metrics, plot_confusion_matrix
 from vimmsd.training.trainer import predict
 from vimmsd.utils.checkpoint import load_checkpoint
@@ -27,6 +30,8 @@ def main():
     parser.add_argument("--checkpoint", help="mặc định: <output_dir>/<tên config>/best.pt")
     parser.add_argument("--split", default="test", choices=["val", "test", "public_test", "private_test"])
     parser.add_argument("--override", nargs="*", default=[])
+    parser.add_argument("--prior-correction", action="store_true",
+                        help="chạy thêm bản hiệu chỉnh prior theo val (mặc định theo eval.prior_correction)")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     logging.getLogger("httpx").setLevel(logging.WARNING)
@@ -49,32 +54,43 @@ def main():
     collator = ViMMSDCollator(model.tokenizer, model.image_processor, cfg.data.max_length,
                               cfg.data.get("max_caption_length"), aux_max_length)
     loader = build_dataloaders(cfg, datasets, collator)[args.split]
-    out = predict(model, loader, device, use_amp=cfg.train.amp and device.type == "cuda")
-
+    use_amp = cfg.train.amp and device.type == "cuda"
     labels = list(cfg.data.labels)
-    if args.split in SUBMISSION_PHASES:
+    texts = {r["id"]: r["caption"] for r in datasets[args.split].records}
+    report(predict(model, loader, device, use_amp=use_amp), args.split, labels, texts, output_dir, cfg.name)
+
+    # hiệu chỉnh prior (eval.prior_correction hoặc --prior-correction): dịch logit theo phân bố lớp của val
+    # (public test) so với train, theo từng tầng của head; kết quả ghi thêm file hậu tố _prior
+    if args.prior_correction or (cfg.get("eval") or {}).get("prior_correction"):
+        counts = split_label_counts(cfg, ("train", "val"))
+        model.set_prior_shift(compute_prior_shift(model.head_type, counts["train"], counts["val"], labels))
+        print(f"hiệu chỉnh prior: train {counts['train']} -> val {counts['val']}")
+        report(predict(model, loader, device, use_amp=use_amp), args.split, labels, texts, output_dir, cfg.name,
+               suffix="_prior")
+
+
+def report(out, split, labels, texts, output_dir, name, suffix=""):
+    if split in SUBMISSION_PHASES:
         results = {"results": {i: labels[p] for i, p in zip(out["ids"], out["preds"])},
-                   "phase": SUBMISSION_PHASES[args.split]}
-        path = output_dir / "results.json"
+                   "phase": SUBMISSION_PHASES[split]}
+        path = output_dir / f"results{suffix}.json"
         path.write_text(json.dumps(results, ensure_ascii=False, indent=2), encoding="utf-8")
         print(f"đã ghi {len(out['ids'])} dự đoán vào {path}")
         return
 
     metrics = compute_metrics(out["labels"], out["preds"], labels)
-    print(format_metrics(metrics))
-    (output_dir / f"{args.split}_metrics.json").write_text(json.dumps(metrics, indent=2))
+    print(f"== {split}{suffix}\n" + format_metrics(metrics))
+    (output_dir / f"{split}_metrics{suffix}.json").write_text(json.dumps(metrics, indent=2))
     plot_confusion_matrix(metrics["confusion_matrix"], labels,
-                          output_dir / f"confusion_matrix_{args.split}.png", title=f"{cfg.name} ({args.split})")
+                          output_dir / f"confusion_matrix_{split}{suffix}.png", title=f"{name} ({split}{suffix})")
 
-    texts = {r["id"]: r["caption"] for r in datasets[args.split].records}
     df = pd.DataFrame({"id": out["ids"], "label": [labels[i] for i in out["labels"]],
                        "pred": [labels[i] for i in out["preds"]]})
     df["caption"] = df["id"].map(texts)
-    for j, name in enumerate(labels):
-        df[f"prob_{name}"] = out["probs"][:, j].numpy()
-    df.to_csv(output_dir / f"{args.split}_predictions.csv", index=False)
+    for j, label in enumerate(labels):
+        df[f"prob_{label}"] = out["probs"][:, j].numpy()
+    df.to_csv(output_dir / f"{split}_predictions{suffix}.csv", index=False)
     print(f"đã ghi kết quả vào {output_dir}")
-
 
 if __name__ == "__main__":
     main()

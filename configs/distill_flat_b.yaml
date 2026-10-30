@@ -1,0 +1,8 @@
+# Hàng phẳng, cột (b): + head T/I học nhãn suy từ nhãn gốc (involves_text / involves_image). Không cần teacher.
+inherit: distill_flat_a.yaml
+model:
+  head:
+    axis_heads: true
+    axis_targets: gold
+loss:
+  lambda_axis: 0.3
