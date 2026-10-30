@@ -1,5 +1,5 @@
 # EDA Summary — ViMMSD
-_Generated: 2026-10-02 13:09_
+_Generated: 2026-10-25 16:59_
 
 ## Phân bố nhãn (toàn bộ labeled)
 | Nhãn | Số mẫu | Tỉ lệ |
@@ -16,4 +16,4 @@ _Generated: 2026-10-02 13:09_
 - P95 n_words: 230
 - Tỉ lệ có emoji: 30.8%
 - Tỉ lệ có hashtag: 22.4%
-- Tỉ lệ có teencode: 9.3%
+- Tỉ lệ có teencode: 8.9%
