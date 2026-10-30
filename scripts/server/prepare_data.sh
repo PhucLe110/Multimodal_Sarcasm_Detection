@@ -2,6 +2,7 @@
 # Chuẩn bị dữ liệu trên GPU server (CODEBASE.md mục 7.2, 7.4). Chạy sau setup_env.sh, trong venv:
 #   DATA_ROOT=/data/<user> bash scripts/server/prepare_data.sh               # tải cache có sẵn của nhóm
 #   DATA_ROOT=/data/<user> REGENERATE=1 bash scripts/server/prepare_data.sh  # sinh lại cache text + ảnh
+#   DATA_ROOT=/data/<user> RAW_DIR=/data/<user>/vimmsd-data bash ...          # dùng ViMMSD có sẵn, không tải
 #
 # Tạo trên ổ dữ liệu:  $DATA_ROOT/vimmsd (ViMMSD gốc), $DATA_ROOT/vimmsd_cache, $DATA_ROOT/vimmsd_outputs
 # và symlink trong repo: data/server/{raw,cache,outputs} (khớp paths.server trong configs/base.yaml).
@@ -9,7 +10,8 @@
 #
 # Biến:
 #   DATA_ROOT (bắt buộc)
-#   RAW_DATASET=phuclkz/vimmsd-private-dataset
+#   RAW_DIR               thư mục ViMMSD đã có sẵn trên server (chứa vimmsd-train.json): dùng luôn, không tải từ Kaggle
+#   RAW_DATASET=phuclkz/vimmsd-private-dataset   chỉ dùng khi không đặt RAW_DIR
 #   CACHE_DATASET=funalee/vimmsd-data-preprocessed   text_preprocessed.json + image_preprocessed.json của nhóm
 #   REGENERATE=1          sinh lại cache thay vì tải (cần WITH_IMAGE_TEXT=1 lúc setup_env.sh)
 #   NUM_GPUS              số tiến trình OCR / VLM chạy song song khi REGENERATE=1 (mặc định: số GPU)
@@ -37,12 +39,40 @@ link() {  # link <đích> <tên trong data/server>: không đè thư mục thậ
   fi
 }
 
-echo "== 1. ViMMSD gốc ($RAW_DATASET)"
-if ! find "$RAW" -name vimmsd-train.json -print -quit | grep -q .; then
-  python scripts/download_data.py --dataset "$RAW_DATASET" --out "$RAW"
+if [ -n "${RAW_DIR:-}" ]; then
+  echo "== 1. ViMMSD gốc có sẵn ($RAW_DIR)"
+  RAW_DIR=$(cd "$RAW_DIR" && pwd -P)
+else
+  echo "== 1. ViMMSD gốc ($RAW_DATASET)"
+  # -L: $RAW có thể là symlink tới thư mục dữ liệu có sẵn
+  if ! find -L "$RAW" -name vimmsd-train.json -print -quit | grep -q .; then
+    python scripts/download_data.py --dataset "$RAW_DATASET" --out "$RAW"
+  fi
+  # file zip có thể giải nén vào một thư mục con: trỏ data_dir vào thư mục chứa vimmsd-train.json
+  RAW_DIR=$(dirname "$(find -L "$RAW" -name vimmsd-train.json -print -quit)")
 fi
-# file zip có thể giải nén vào một thư mục con: trỏ data_dir vào thư mục chứa vimmsd-train.json
-RAW_DIR=$(dirname "$(find "$RAW" -name vimmsd-train.json -print -quit)")
+# bố cục phẳng (train-images/, dev-images/, test-images/ nằm cạnh file JSON): dựng thư mục symlink theo bố cục
+# của config, không di chuyển dữ liệu gốc. Tên thư mục ảnh giữ nguyên nên khoá ảnh trong cache không đổi.
+if [ ! -e "$RAW_DIR/training-images/train-images" ] && [ -d "$RAW_DIR/train-images" ]; then
+  VIEW="$DATA_ROOT/vimmsd_layout"
+  echo "bố cục phẳng: dựng $VIEW trỏ vào $RAW_DIR"
+  mkdir -p "$VIEW/training-images" "$VIEW/public-test-images" "$VIEW/private-test-images"
+  for f in vimmsd-train.json vimmsd-public-test.json vimmsd-private-test.json; do
+    ln -sfn "$RAW_DIR/$f" "$VIEW/$f"
+  done
+  ln -sfn "$RAW_DIR/train-images" "$VIEW/training-images/train-images"
+  ln -sfn "$RAW_DIR/dev-images" "$VIEW/public-test-images/dev-images"
+  ln -sfn "$RAW_DIR/test-images" "$VIEW/private-test-images/test-images"
+  RAW_DIR=$VIEW
+fi
+# đúng bố cục thư mục trong configs/base.yaml (data.*_json, data.*_image_dir)
+for p in vimmsd-train.json vimmsd-public-test.json vimmsd-private-test.json \
+         training-images/train-images public-test-images/dev-images private-test-images/test-images; do
+  if [ ! -e "$RAW_DIR/$p" ]; then
+    echo "LỖI: thiếu $RAW_DIR/$p (bố cục phải khớp data.* trong configs/base.yaml)" >&2
+    exit 1
+  fi
+done
 link "$RAW_DIR" raw
 link "$CACHE" cache
 link "$OUTPUTS" outputs
