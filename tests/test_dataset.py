@@ -8,6 +8,7 @@ from PIL import Image
 
 from vimmsd.analysis.shortcut_check import derangement, swap_images
 from vimmsd.data.dataset import ViMMSDCollator, ViMMSDDataset, load_records, split_records
+from vimmsd.data.image_text import vietocr_line_scores
 from vimmsd.data.preprocessing import TextPreprocessor, clean_ocr, clean_text
 from vimmsd.models.fusion import FUSIONS
 from vimmsd.training.losses import FocalLoss, build_loss, compute_class_weights
@@ -135,6 +136,15 @@ def test_clean_ocr_drops_junk_lines_and_caption_duplicates():
     assert clean_ocr(ocr, "caption khác") == "Tyler, The Creator Làm hộ chiếu đi"
     assert clean_ocr("Ước gì nằm yên cũng được nhiều like", "Ước gì nằm yên cũng được nhiều like!") == ""
     assert clean_ocr("", "abc") == ""
+
+
+def test_vietocr_line_scores_ignore_tokens_after_eos():
+    # dòng 0 kết thúc sớm rồi sinh rác xác suất thấp; dòng 1 chạy hết batch; dòng 2 không có ký tự nào
+    tokens = [[1, 10, 2, 50, 50], [1, 10, 11, 12, 2], [1, 2, 7, 7, 7]]
+    probs = [[1, 0.9, 0.9, 0.1, 0.1], [1, 0.8, 0.8, 0.8, 0.8], [1, 0.9, 0.1, 0.1, 0.1]]
+    scores = vietocr_line_scores(tokens, probs)
+    assert scores[:2] == pytest.approx([0.9, 0.8])
+    assert np.isnan(scores[2])
 
 
 def test_text_cache_file_has_fixed_name(tmp_path):

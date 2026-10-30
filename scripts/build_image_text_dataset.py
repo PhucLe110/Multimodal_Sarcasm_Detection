@@ -22,10 +22,10 @@ from vimmsd.data.image_text import image_key, merge_image_texts
 from vimmsd.utils.config import load_config
 from vimmsd.utils.env import git_commit
 
-SPLITS = (  # (tên split, khóa file annotation, khóa thư mục ảnh) trong cfg.data
-    ("train", "train_json", "train_image_dir"),
-    ("public_test", "public_test_json", "public_test_image_dir"),
-    ("private_test", "private_test_json", "private_test_image_dir"),
+SPLITS = (  # (tên split, khóa file annotation, khóa thư mục ảnh, khóa file nhãn) trong cfg.data
+    ("train", "train_json", "train_image_dir", None),
+    ("public_test", "public_test_json", "public_test_image_dir", "public_test_labels"),
+    ("private_test", "private_test_json", "private_test_image_dir", "private_test_labels"),
 )
 
 
@@ -62,13 +62,15 @@ def main():
 
     label2id = {l: i for i, l in enumerate(cfg.data.labels)}
     rows, keys = [], []
-    for split, json_key, dir_key in SPLITS:
+    for split, json_key, dir_key, labels_key in SPLITS:
         ann = data_dir / cfg.data[json_key]
         if not ann.exists():
             print(f"bỏ qua {split}: không có {ann}")
             continue
         image_dir = data_dir / cfg.data[dir_key]
-        for r in load_records(ann, image_dir, label2id):
+        labels_name = cfg.data.get(labels_key) if labels_key else None
+        labels_path = data_dir / labels_name if labels_name else None
+        for r in load_records(ann, image_dir, label2id, labels_path=labels_path):
             key = image_key(image_dir, Path(r["image_path"]).name)
             keys.append(key)
             rows.append({"split": split, "id": r["id"], "image_key": key,

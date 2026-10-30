@@ -53,6 +53,50 @@ def reading_order(boxes):
     return [box for _, line in lines for box in sorted(line, key=lambda b: b[0])]
 
 
+def vietocr_line_scores(tokens, probs, eos_token=2, num_special=4):
+    """Độ tin cậy từng dòng: trung bình xác suất các ký tự trước EOS của dòng đó. tokens, probs: (số dòng, số bước).
+
+    `vietocr.tool.translate` tính cả các ký tự sinh ra sau EOS (cả batch chạy tới khi dòng dài nhất xong), nên
+    dòng ngắn nằm chung batch với dòng dài bị tụt điểm và bị lọc nhầm. Dòng không có ký tự nào có score NaN."""
+    tokens, probs = np.asarray(tokens), np.asarray(probs, dtype=float)
+    keep = (tokens >= num_special) & (np.cumsum(tokens == eos_token, axis=1) == 0)
+    with np.errstate(invalid="ignore"):
+        return (probs * keep).sum(axis=1) / keep.sum(axis=1)
+
+
+@torch.no_grad()
+def vietocr_predict_batch(recognizer, crops, max_seq_length=128, sos_token=1, eos_token=2):
+    """Như `Predictor.predict_batch(crops, return_prob=True)` nhưng score không phụ thuộc các dòng cùng batch."""
+    from vietocr.tool.translate import process_input
+
+    model, dataset_cfg = recognizer.model, recognizer.config["dataset"]
+    model.eval()
+    buckets = {}  # dòng cùng chiều rộng sau resize mới ghép được thành một batch
+    for i, crop in enumerate(crops):
+        img = process_input(crop, dataset_cfg["image_height"], dataset_cfg["image_min_width"],
+                            dataset_cfg["image_max_width"])
+        buckets.setdefault(img.shape[-1], []).append((i, img))
+
+    texts, scores = [""] * len(crops), [float("nan")] * len(crops)
+    for items in buckets.values():
+        batch = torch.cat([img for _, img in items]).to(recognizer.device)
+        memory = model.transformer.forward_encoder(model.cnn(batch))
+        tokens = [[sos_token] * len(items)]
+        probs = [[1.0] * len(items)]
+        for _ in range(max_seq_length + 1):
+            if (np.asarray(tokens).T == eos_token).any(axis=1).all():
+                break
+            output, memory = model.transformer.forward_decoder(torch.LongTensor(tokens).to(recognizer.device), memory)
+            values, indices = output.softmax(dim=-1)[:, -1].max(dim=-1)
+            tokens.append(indices.tolist())
+            probs.append(values.tolist())
+        tokens, probs = np.asarray(tokens).T, np.asarray(probs).T
+        batch_texts = recognizer.vocab.batch_decode(tokens.tolist())
+        for (i, _), text, score in zip(items, batch_texts, vietocr_line_scores(tokens, probs, eos_token)):
+            texts[i], scores[i] = text, float(score)
+    return texts, scores
+
+
 class OCRExtractor:
     """OCR hai bước: PaddleOCR (>= 3.0) phát hiện vùng chữ, VietOCR nhận dạng từng dòng.
 
@@ -96,7 +140,7 @@ class OCRExtractor:
                 owners.append(k)
         lines = [[] for _ in image_paths]
         if crops:
-            texts, scores = self.recognizer.predict_batch(crops, return_prob=True)
+            texts, scores = vietocr_predict_batch(self.recognizer, crops)
             for k, text, score in zip(owners, texts, scores):
                 # score NaN (VietOCR không tự tin ký tự nào) so sánh >= luôn False nên dòng đó bị bỏ
                 if score >= self.min_score and text.strip():
