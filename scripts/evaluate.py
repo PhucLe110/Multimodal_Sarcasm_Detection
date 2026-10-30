@@ -1,7 +1,8 @@
 """Đánh giá checkpoint: python scripts/evaluate.py --config configs/fusion_concat.yaml [--split test]
 
 --split test/val: xuất metrics, confusion matrix, file dự đoán (kèm xác suất) để phân tích lỗi.
---split public_test: tập không nhãn, xuất results.json theo định dạng nộp bài UIT DSC."""
+--split public_test / private_test: xuất results.json theo định dạng nộp bài UIT DSC.
+Với data.split=official, val = public test và test = private test nên metrics lấy qua --split val / test."""
 import argparse
 import json
 import logging
@@ -17,12 +18,14 @@ from vimmsd.training.trainer import predict
 from vimmsd.utils.checkpoint import load_checkpoint
 from vimmsd.utils.config import load_config
 
+SUBMISSION_PHASES = {"public_test": "dev", "private_test": "test"}
+
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", required=True)
     parser.add_argument("--checkpoint", help="mặc định: <output_dir>/<tên config>/best.pt")
-    parser.add_argument("--split", default="test", choices=["val", "test", "public_test"])
+    parser.add_argument("--split", default="test", choices=["val", "test", "public_test", "private_test"])
     parser.add_argument("--override", nargs="*", default=[])
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -49,8 +52,9 @@ def main():
     out = predict(model, loader, device, use_amp=cfg.train.amp and device.type == "cuda")
 
     labels = list(cfg.data.labels)
-    if args.split == "public_test":
-        results = {"results": {i: labels[p] for i, p in zip(out["ids"], out["preds"])}, "phase": "dev"}
+    if args.split in SUBMISSION_PHASES:
+        results = {"results": {i: labels[p] for i, p in zip(out["ids"], out["preds"])},
+                   "phase": SUBMISSION_PHASES[args.split]}
         path = output_dir / "results.json"
         path.write_text(json.dumps(results, ensure_ascii=False, indent=2), encoding="utf-8")
         print(f"đã ghi {len(out['ids'])} dự đoán vào {path}")

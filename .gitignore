@@ -3,6 +3,8 @@ data/raw/*
 data/processed/*
 data/processed_v1/*
 data/processed_v2/*
+data/sample/
+reports/literature_review/papers/
 notebooks/logs/
 !data/raw/.gitkeep
 !data/processed/.gitkeep
@@ -26,12 +28,10 @@ venv/
 kaggle.json
 .env
 
-# docs
-docs/
-
 # other
 reports/dataset_report.html
 reports/environment_setup.md
 reports/environment_setup.pdf
 scripts/md_to_pdf.py
 cache_file/
+output/

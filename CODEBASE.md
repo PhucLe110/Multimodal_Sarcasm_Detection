@@ -9,9 +9,10 @@ Tài liệu này mô tả cấu trúc thư mục, module, quy ước code và c�
 - **Tách logic khỏi notebook**: mọi hàm/class tái sử dụng (dataset, model, loss, metric...) viết trong `src/`, notebook chỉ dùng để gọi và chạy thử nghiệm/visualize. Lý do: 4 người cùng làm trên Colab/Kaggle, nếu code nằm hết trong notebook sẽ rất khó merge và dễ đụng nhau.
 - **Config hóa thí nghiệm**: mỗi lần train (text-only, image-only, concat, cross-attention...) là 1 file config (YAML), không hard-code hyperparameter trong code. Giúp so sánh kết quả giữa các tuần dễ dàng và tái lặp được.
 - **Không commit dữ liệu/checkpoint lớn lên git** — chỉ commit code + config. Data và model checkpoint lưu trên Google Drive / Kaggle Dataset riêng (xem mục 5).
-- **Một entrypoint train duy nhất** (`scripts/train.py`), nhận vào 1 config, chạy được cả trên Colab lẫn Kaggle mà không sửa code.
+- **Một entrypoint train duy nhất** (`scripts/train.py`), nhận vào 1 config, chạy được trên Kaggle, Colab và GPU server mà không sửa code.
+- **Mỗi bước đều có script `.py`**: tiền xử lý text, OCR / mô tả ảnh, sinh reasoning, train, đánh giá. Notebook chỉ gọi lại các script hoặc hàm trong `src/`. Nhờ vậy trên GPU server chỉ cần chạy `.py`, không cần notebook (mục 7).
 - **Notebook tự bootstrap**: khi chạy trên Kaggle/Colab chỉ cần upload file `.ipynb`, không upload cả codebase. Cell đầu tiên của mỗi notebook tự `git clone` repo từ GitHub và `pip install -e` package `vimmsd` (xem mục 6). Code luôn lấy từ git nên cả nhóm chạy cùng một phiên bản, không có bản copy lệch nhau.
-- **Không hard-code đường dẫn theo môi trường**: data/output path khai báo trong `configs/base.yaml` cho từng môi trường (local/Kaggle/Colab), code tự nhận diện môi trường đang chạy.
+- **Không hard-code đường dẫn theo môi trường**: data/output path khai báo trong `configs/base.yaml` cho từng môi trường (local/server/Kaggle/Colab), code tự nhận diện môi trường đang chạy.
 
 ---
 
@@ -22,6 +23,9 @@ IE403/
 ├── README.md              # Mô tả dự án, bài toán, input/output
 ├── PLAN.md                 # Kế hoạch 8 tuần
 ├── CODEBASE.md             # (tài liệu này)
+├── docs/
+│   ├── cot_distillation.md       # thiết kế M1 (CoT distillation) và M2 (+ hierarchical)
+│   └── cot_distillation_plan.md  # kế hoạch chạy M1/M2 trên GPU server
 ├── pyproject.toml          # khai báo package `vimmsd` để `pip install -e .`
 ├── requirements.txt        # Thư viện đầy đủ (chạy local)
 ├── requirements-kaggle.txt # Chỉ các thư viện Kaggle/Colab chưa có sẵn
@@ -32,13 +36,30 @@ IE403/
 │   ├── text_only.yaml         # Tuần 3
 │   ├── image_only.yaml        # Tuần 3
 │   ├── fusion_concat.yaml     # Tuần 4
+│   ├── fusion_concat_frozen.yaml # Tuần 4: đóng băng cả 2 encoder, chỉ train MLP head
+│   ├── fusion_concat_ftlast.yaml # Tuần 4: như trên + fine-tune nhẹ 2 block cuối mỗi encoder
+│   ├── text_only_frozen.yaml  # Tuần 4: mốc so sánh, PhoBERT đóng băng
+│   ├── image_only_frozen.yaml # Tuần 4: mốc so sánh, CLIP đóng băng
+│   ├── text_only_frozen_cw.yaml # Tuần 4: text_only_frozen + class weight sqrt_inverse
+│   ├── fusion_concat_frozen_reg.yaml # Tuần 4: concat đóng băng + LayerNorm/projection mỗi nhánh, dropout ảnh, modality dropout
+│   ├── fusion_concat_frozen_reg_cw.yaml # Tuần 4: như trên + class weight sqrt_inverse
+│   ├── fusion_multistream_frozen.yaml # Tuần 4: caption, OCR, mô tả VLM mã hoá riêng bằng PhoBERT đóng băng, nối vector
+│   ├── fusion_multistream_clip_frozen.yaml # Tuần 4: như trên + vector CLIP
+│   ├── fusion_multistream_ocr_frozen.yaml # Tuần 4: ablation, caption + OCR
+│   ├── fusion_multistream_desc_frozen.yaml # Tuần 4: ablation, caption + mô tả VLM
 │   ├── fusion_cross_attn.yaml # Tuần 5
-│   └── fusion_cross_attn_focal.yaml # Tuần 5 (+ xử lý imbalance)
+│   ├── fusion_cross_attn_focal.yaml # Tuần 5 (+ xử lý imbalance)
+│   ├── distill_flat_{a,b,c,d}.yaml # (dự kiến) M1 và ablation, xem docs/cot_distillation.md mục 6.2
+│   ├── distill_hier_{a,b,c,d}.yaml # (dự kiến) M2 và ablation
+│   ├── hier_cascade.yaml           # (dự kiến) tái lập pipeline phân cấp nối tiếp của Vu et al.
+│   └── experiments/                # (dự kiến) danh sách config × seed cho run_experiments.py
+│       └── cot_distill.yaml
 │
 ├── data/
 │   ├── README.md            # Hướng dẫn tải ViMMSD (script + link, không commit data thật)
-│   ├── raw/                  # (gitignored) dữ liệu gốc tải về
-│   └── processed/            # (gitignored) dữ liệu sau tiền xử lý (cache)
+│   ├── raw/                  # (gitignored) dữ liệu gốc tải về; trên server là symlink, xem mục 7.2
+│   └── processed/            # (gitignored) cache tiền xử lý: text_preprocessed.json, ocr.json,
+│                             #   description.json, image_preprocessed.json, rationales/ (mục 7.2)
 │
 ├── src/
 │   └── vimmsd/
@@ -47,18 +68,20 @@ IE403/
 │       │   ├── dataset.py         # class ViMMSDDataset (PyTorch Dataset)
 │       │   ├── preprocessing.py   # word segmentation, chuẩn hóa text, resize/normalize ảnh
 │       │   ├── image_text.py      # ảnh → text: OCR (PaddleOCR + VietOCR) + mô tả ảnh (VLM Vintern), cache JSON
+│       │   ├── rationale.py       # (dự kiến) prompt CoT, parse JSON của teacher, phân nhóm, đọc rationale_dataset.json
 │       │   └── augmentation.py    # back-translation, image augmentation nhẹ
 │       │
 │       ├── models/
 │       │   ├── text_encoder.py    # wrapper PhoBERT
 │       │   ├── image_encoder.py   # wrapper CLIP/ViT
-│       │   ├── fusion.py          # ConcatFusion, CrossAttentionFusion
-│       │   └── classifier.py      # head phân loại 4 lớp, lắp ghép encoder + fusion
+│       │   ├── freezing.py        # đóng băng encoder, mở lại N block cuối (unfreeze_last_n)
+│       │   ├── fusion.py          # ConcatFusion, CrossAttentionFusion, MultiStreamFusion
+│       │   └── classifier.py      # head phân loại 4 lớp (flat; dự kiến thêm hierarchical), lắp ghép encoder + fusion
 │       │
 │       ├── training/
 │       │   ├── trainer.py         # vòng lặp train/eval chung
-│       │   ├── losses.py          # CrossEntropy có weight, FocalLoss
-│       │   └── metrics.py         # precision/recall/f1 (macro), confusion matrix
+│       │   ├── losses.py          # CrossEntropy có weight, FocalLoss; dự kiến: loss phụ T/I, căn chỉnh reasoning, NLL phân cấp
+│       │   └── metrics.py         # precision/recall/f1 (macro), confusion matrix; dự kiến: hiệu chỉnh prior
 │       │
 │       ├── analysis/              # Tuần 6-7
 │       │   ├── shortcut_check.py    # thí nghiệm tráo ảnh
@@ -67,17 +90,31 @@ IE403/
 │       │
 │       └── utils/
 │           ├── config.py          # load/parse YAML config thành object, chọn paths theo môi trường
-│           ├── env.py             # detect_env(): "kaggle" / "colab" / "local"
+│           ├── env.py             # detect_env(): "kaggle" / "colab" / "server" (dự kiến, qua VIMMSD_ENV) / "local"
 │           ├── seed.py            # set seed cho reproducibility
-│           └── checkpoint.py      # save/load checkpoint (tương thích Drive/Kaggle)
+│           ├── checkpoint.py      # save/load checkpoint (tương thích Drive/Kaggle)
+│           └── gpu_queue.py       # chạy nhiều run song song, mỗi GPU một run (Kaggle T4 x2 hoặc GPU server)
 │
-├── scripts/
-│   ├── download_data.py     # tải ViMMSD bằng Kaggle API (chỉ dùng khi chạy local)
+├── scripts/                  # mỗi bước một script; trên GPU server chỉ dùng thư mục này (mục 7)
+│   ├── download_data.py      # tải ViMMSD (và bộ cache đã preprocess) bằng Kaggle API
+│   ├── preprocess_text.py    # (dự kiến) chuẩn hoá toàn bộ caption → text_preprocessed.json
 │   ├── extract_image_text.py # tạo cache OCR / mô tả VLM cho toàn bộ ảnh (chạy 1 lần, cần GPU)
+│   ├── build_image_text_dataset.py # gộp ocr.json + description.json → image_preprocessed.json/.csv
+│   ├── make_id_lists.py      # (dự kiến) danh sách id cho tập thử teacher và các lô sinh reasoning
+│   ├── generate_rationales.py      # (dự kiến) teacher sinh k reasoning/mẫu, chạy tiếp được, chia shard
+│   ├── eval_teacher.py       # (dự kiến) so output teacher với nhãn: confusion matrix, F1, tỉ lệ parse lỗi
+│   ├── build_rationale_dataset.py  # (dự kiến) group / rationalize / export CSV chấm / merge → rationale_dataset.json
+│   ├── embed_rationales.py   # (dự kiến) mã hoá reasoning bằng PhoBERT đóng băng → rationale_embeddings.npy
 │   ├── train.py              # entrypoint train: `python train.py --config configs/xxx.yaml`
-│   └── evaluate.py           # entrypoint eval trên test set + xuất confusion matrix
+│   ├── run_experiments.py    # (dự kiến) chạy danh sách config × seed trên N GPU (dùng gpu_queue), ghi log
+│   ├── summarize_results.py  # (dự kiến) gộp metrics các seed → bảng trung bình ± độ lệch chuẩn
+│   ├── evaluate.py           # entrypoint eval trên test set + xuất confusion matrix
+│   └── server/               # (dự kiến) shell script cho GPU server
+│       ├── setup_env.sh        # tạo venv, cài requirements, kiểm tra Java / CUDA
+│       ├── prepare_data.sh     # tải data + chạy toàn bộ tiền xử lý (mục 7.4)
+│       └── cot_distill.sh      # chạy các giai đoạn của docs/cot_distillation_plan.md
 │
-├── notebooks/                # Notebook cho từng giai đoạn (theo PLAN.md), upload thẳng lên Kaggle
+├── notebooks/                # Notebook cho từng giai đoạn (theo PLAN.md), upload thẳng lên Kaggle; GPU server không dùng
 │   ├── 00_template.ipynb      # notebook mẫu chứa sẵn cell bootstrap (mục 6), copy ra khi tạo notebook mới
 │   ├── 00_dataset_check.ipynb # kiểm tra dữ liệu ViMMSD, chạy độc lập không cần clone repo
 │   ├── 01_eda.ipynb
@@ -90,7 +127,8 @@ IE403/
 │   └── 07_ocr_llm_comparison.ipynb    # ablation OCR/mô tả VLM + so sánh LLM đa modal
 │
 ├── reports/
-│   ├── results.md            # bảng tổng hợp kết quả mọi thí nghiệm (cập nhật liên tục)
+│   ├── results.md            # bảng tổng hợp kết quả mọi thí nghiệm (cập nhật liên tục, cột Môi trường ghi kaggle/server)
+│   ├── literature_review/    # review tài liệu; papers/ (PDF) gitignored
 │   └── figures/               # hình ảnh xuất ra cho báo cáo (attention map, confusion matrix...)
 │
 └── tests/
@@ -112,6 +150,8 @@ IE403/
 | `analysis/shortcut_check.py` | Tuần 6 | Swap ảnh giữa các mẫu, đo % thay đổi dự đoán |
 | `analysis/interpretability.py` | Tuần 6 | Grad-CAM trên ảnh, attention weight trên text |
 | `analysis/llm_compare.py` | Tuần 7 | Prompt Vintern/LLM đa modal, so sánh với model fine-tune |
+| `data/rationale.py`, `scripts/generate_rationales.py`, `scripts/build_rationale_dataset.py`, `scripts/embed_rationales.py` | CoT distillation | Sinh, lọc, đóng gói reasoning của teacher. Chỉ chạy trên GPU server (`docs/cot_distillation_plan.md`) |
+| `scripts/run_experiments.py`, `scripts/summarize_results.py` | CoT distillation | Thay cho cell chạy nhiều run trong notebook 04: chạy ma trận config × seed trên N GPU và tổng hợp kết quả |
 
 ---
 
@@ -130,13 +170,16 @@ IE403/
 ## 5. Quản lý dữ liệu & checkpoint (do dùng GPU free)
 
 - **Data**: không commit vào git.
+  - **GPU server**: tải bằng `scripts/download_data.py` về một thư mục ngoài repo, rồi symlink vào `data/raw/` (mục 7.2).
   - **Kaggle**: attach bộ ViMMSD vào notebook qua *Add Input* (không cần tải bằng API), data nằm ở `/kaggle/input/<tên-dataset>/`.
   - **Colab**: để data trên Google Drive, mount Drive ở đầu notebook.
   - **Local**: dùng `scripts/download_data.py` (gọi Kaggle API) để tải về `data/raw/`.
 - **Checkpoint model**: vì free tier hay bị ngắt session giữa chừng, `utils/checkpoint.py` cần hỗ trợ resume từ checkpoint gần nhất (qua key `resume_from` trong config).
   - **Kaggle**: lưu vào `/kaggle/working/outputs/`. Chỉ được giữ lại khi chạy bằng *Save Version → Save & Run All*. Muốn resume thì attach output của version trước làm input của notebook, rồi trỏ `resume_from` vào đó.
   - **Colab**: lưu thẳng lên Google Drive.
-- **Kết quả thí nghiệm**: mỗi lần train xong, ghi 1 dòng vào `reports/results.md` (config dùng, **commit hash** của code, macro-F1, thời gian train) để cả nhóm theo dõi tiến độ chung mà không cần hỏi nhau qua chat. Commit hash giúp tái lặp đúng kết quả, vì notebook luôn clone code mới nhất.
+  - **GPU server**: lưu vào `outputs/<tên thí nghiệm>/` trong repo clone (gitignored). Không bị ngắt session nên chỉ cần `resume_from` khi tự dừng.
+- **Kết quả thí nghiệm**: mỗi lần train xong, ghi 1 dòng vào `reports/results.md` (config dùng, **commit hash** của code, môi trường, macro-F1, thời gian train) để cả nhóm theo dõi tiến độ chung mà không cần hỏi nhau qua chat. Commit hash giúp tái lặp đúng kết quả, vì notebook luôn clone code mới nhất.
+- **Chia sẻ cache giữa server và Kaggle**: cache sinh trên server (`text_preprocessed.json`, `image_preprocessed.json`, `rationale_dataset.json`) được upload thành phiên bản mới của Kaggle dataset, để các thành viên chạy Kaggle dùng đúng cùng dữ liệu (mục 7.6).
 
 ---
 
@@ -213,7 +256,7 @@ cfg = load_config("configs/text_only.yaml")   # tự chọn paths theo môi trư
 
 ### 6.3. Đường dẫn theo môi trường
 
-`configs/base.yaml` khai báo paths cho từng môi trường, `utils/env.py` nhận diện môi trường (`KAGGLE_KERNEL_RUN_TYPE` → kaggle, `COLAB_RELEASE_TAG` → colab, còn lại → local) và `utils/config.py` chọn đúng nhánh:
+`configs/base.yaml` khai báo paths cho từng môi trường, `utils/env.py` nhận diện môi trường (`KAGGLE_KERNEL_RUN_TYPE` → kaggle, `COLAB_RELEASE_TAG` → colab, còn lại → local; dự kiến thêm `VIMMSD_ENV=server` → server, xem mục 7.2) và `utils/config.py` chọn đúng nhánh:
 
 ```yaml
 paths:
@@ -222,7 +265,7 @@ paths:
     output_dir: outputs
     cache_dir: data/processed
   kaggle:
-    data_dir: /kaggle/input/<tên-dataset-vimmsd>
+    data_dir: /kaggle/input/datasets/phuclkz/vimmsd-private-dataset
     output_dir: /kaggle/working/outputs
     cache_dir: /kaggle/working/cache
   colab:
@@ -246,7 +289,139 @@ python scripts/train.py --config configs/fusion_cross_attn.yaml \
 
 ---
 
-## 7. Môi trường & dependencies
+## 7. Chạy trên GPU server (chỉ `.py`)
+
+Dùng cho người có quyền vào GPU server riêng; hiện là task CoT distillation (`docs/cot_distillation_plan.md`). Không dùng notebook: mọi bước đều là script trong `scripts/`, chạy trong `tmux` để không mất tiến trình khi ngắt SSH. Các thành viên khác vẫn chạy Kaggle như mục 6. Hai bên dùng chung code (git) và chung cache (Kaggle dataset).
+
+### 7.1. Cài đặt một lần
+
+```bash
+git clone https://github.com/yunaLee21/Multimodal_Sarcasm_Detection.git ~/IE403
+cd ~/IE403 && git checkout <branch>
+bash scripts/server/setup_env.sh
+```
+
+`setup_env.sh` (dự kiến) gồm các bước:
+
+```bash
+python3 -m venv .venv && source .venv/bin/activate
+pip install torch torchvision --index-url https://download.pytorch.org/whl/<cuXXX>   # khớp driver: nvidia-smi
+pip install -r requirements.txt && pip install --no-deps vietocr && pip install -e .
+java -version            # VnCoreNLP cần Java >= 8
+pytest tests -q          # kiểm tra nhanh, không cần GPU
+```
+
+Biến môi trường nên đặt trong `~/.bashrc` (hoặc `.env` trong repo, không commit):
+
+```bash
+export VIMMSD_ENV=server                   # (dự kiến) chọn nhánh paths.server trong base.yaml
+export HF_HOME=/data/<user>/hf_cache       # cache model HuggingFace, nên đặt ở ổ lớn
+export VNCORENLP_DIR=/data/<user>/vncorenlp
+export KAGGLE_CONFIG_DIR=~/.kaggle         # kaggle.json để tải dataset private
+```
+
+Thay `/data/<user>` bằng ổ dữ liệu thật của server.
+
+### 7.2. Bố cục dữ liệu trên server
+
+Dữ liệu và model nằm ngoài repo, repo chỉ trỏ tới bằng symlink hoặc `paths.server`:
+
+```
+/data/<user>/
+├── vimmsd/                      # ViMMSD gốc (phuclkz/vimmsd-private-dataset)
+│   ├── vimmsd-train.json, vimmsd-{public,private}-test{,-ref}.json, vimmsd-warmup.json
+│   └── training-images/ public-test-images/ private-test-images/ warmup-images/
+├── vimmsd_cache/                # cache tiền xử lý, mỗi phiên bản một thư mục con khi đổi model/prompt
+│   ├── text_preprocessed.json
+│   ├── ocr.json, description.json, image_preprocessed.json/.csv
+│   └── rationales/
+│       ├── raw/<prompt_version>/*.jsonl      # output teacher, chia shard
+│       ├── review/<batch>.csv                # file chấm rubric
+│       ├── rationale_dataset.json
+│       └── rationale_embeddings.npy (+ ids)
+├── hf_cache/                    # HF_HOME
+└── vncorenlp/                   # VNCORENLP_DIR
+
+~/IE403/                         # repo clone
+├── data/raw -> /data/<user>/vimmsd            (symlink)
+├── data/processed -> /data/<user>/vimmsd_cache (symlink)
+├── outputs/<tên thí nghiệm>/    # checkpoint, metrics, confusion matrix (gitignored)
+└── logs/<giai đoạn>/*.log       # log của tmux / run_experiments.py (dự kiến, thêm vào .gitignore)
+```
+
+Có hai cách để code tìm thấy dữ liệu:
+- **Không cần sửa code**: tạo 2 symlink ở trên rồi dùng nhánh `paths.local` có sẵn (`data/raw`, `data/processed`, `outputs`).
+- **Dự kiến**: thêm nhánh `paths.server` vào `configs/base.yaml`, và cho `detect_env()` trả về `server` khi có `VIMMSD_ENV=server`. Cách này cần khi muốn tách riêng đường dẫn server khỏi máy local.
+
+```yaml
+paths:
+  server:
+    data_dir: /data/<user>/vimmsd
+    output_dir: outputs
+    cache_dir: /data/<user>/vimmsd_cache
+```
+
+### 7.3. Chạy tiến trình dài
+
+```bash
+tmux new -s vimmsd                          # mở lại: tmux attach -t vimmsd
+CUDA_VISIBLE_DEVICES=0 python scripts/... 2>&1 | tee logs/<giai đoạn>/<tên>.log
+```
+
+- Mỗi GPU chạy một tiến trình. Các script sinh dữ liệu (`extract_image_text.py`, `generate_rationales.py`) chia việc bằng `--num-shards N --shard i`, mỗi shard một file cache, sau đó gộp lại. Tất cả đều chạy tiếp được nếu bị dừng: mẫu đã có trong cache sẽ bỏ qua.
+- Train nhiều run: `run_experiments.py` (dự kiến) đọc `configs/experiments/<tên>.yaml` (danh sách config × seed × override) và dùng `utils/gpu_queue.run_on_gpus` để chia run cho các GPU. Đây là phần thay cho cell chạy song song trong notebook 04.
+
+### 7.4. Tiền xử lý trên server
+
+Các bước này trước đây chạy bằng notebook 01a/01b trên Kaggle. Trên server chạy bằng script:
+
+| Bước | Lệnh | Đầu ra | GPU |
+|---|---|---|---|
+| 1. Tải dữ liệu | `python scripts/download_data.py --dataset phuclkz/vimmsd-private-dataset --out /data/<user>/vimmsd` | ViMMSD gốc | không |
+| 2. Tiền xử lý caption | `python scripts/preprocess_text.py --config configs/base.yaml` (dự kiến, gọi `dataset.build_text_cache`) | `text_preprocessed.json` | không (VnCoreNLP chạy CPU) |
+| 3. OCR | `python scripts/extract_image_text.py --task ocr --num-shards N --shard i` | `ocr.json` (+ shard) | có |
+| 4. Mô tả ảnh | `python scripts/extract_image_text.py --task description --vlm vintern --num-shards N --shard i` | `description.json` (+ shard) | có |
+| 5. Gộp | `python scripts/build_image_text_dataset.py --config configs/base.yaml --out-dir data/processed` | `image_preprocessed.json/.csv` | không |
+
+`scripts/server/prepare_data.sh` (dự kiến) gọi lần lượt 5 bước, với bước 3–4 chạy một tiến trình cho mỗi GPU rồi gộp shard bằng `merge_image_text_caches`.
+
+**Nên tải cache có sẵn thay vì sinh lại**, trừ khi cố ý đổi model OCR/VLM. Thay bước 2–5 bằng:
+
+```bash
+python scripts/download_data.py --dataset funalee/vimmsd-data-preprocessed --out /data/<user>/vimmsd_cache
+```
+
+Dùng chung đúng file cache với nhóm thì kết quả server và Kaggle mới so sánh được với nhau. `text_preprocessed.json` có `meta.pipeline_key`: nếu cấu hình text khác thì code tự bỏ qua cache và tạo lại, nên không lo dùng nhầm. Nếu sinh lại cache trên server, ghi rõ model đã dùng (`meta` của `image_preprocessed.json`) và upload lên Kaggle dataset (mục 7.6).
+
+### 7.5. CoT distillation trên server
+
+Thứ tự và cổng quyết định theo `docs/cot_distillation_plan.md`. Mỗi giai đoạn tương ứng một nhóm lệnh trong `scripts/server/cot_distill.sh` (dự kiến):
+
+| Giai đoạn | Lệnh chính |
+|---|---|
+| 0 | `run_experiments.py --plan configs/experiments/cot_distill_stage0.yaml` (cột a/b, phẳng / phân cấp / cascade × 3 seed) |
+| 1 | `generate_rationales.py --ids-file pilot_dev.txt --k 1`, rồi `--ids-file pilot_eval.txt --k 3`, rồi `--splits public_test --k 1` (zero-shot trên val) |
+| 2 | `generate_rationales.py --splits train --ids-file batch{1,2,3}.txt --k {5,3,3} --num-shards N --shard i` |
+| 3 | `build_rationale_dataset.py group`, `rationalize`, `export` |
+| 4 | chấm file `review/*.csv` (không chạy gì trên server) |
+| 5 | `build_rationale_dataset.py merge`, `embed_rationales.py` |
+| 6 | `run_experiments.py --plan configs/experiments/cot_distill.yaml`, `summarize_results.py`, `evaluate.py --split test` |
+
+Báo cáo tạm của từng giai đoạn (confusion matrix của teacher, thống kê phân nhóm) do script ghi ra `outputs/cot_distill/<giai đoạn>/`, thay cho các cell in kết quả trong notebook.
+
+### 7.6. Đồng bộ với nhóm
+
+- **Code**: push lên branch như mọi người, commit hash ghi vào `reports/results.md`. Trên server chỉ `git pull`, không sửa code trực tiếp trên server rồi quên commit.
+- **Cache**: khi sinh mới `image_preprocessed.json` hoặc `rationale_dataset.json`, upload thành phiên bản mới của Kaggle dataset:
+  ```bash
+  kaggle datasets version -p /data/<user>/vimmsd_cache/<thư mục upload> -m "<model/prompt version, commit>"
+  ```
+  Thành viên chạy Kaggle chỉ cần *Add Input* dataset đó.
+- **Kết quả**: dòng trong `reports/results.md` ghi môi trường `server` và loại GPU, vì thời gian train không so được với Kaggle T4.
+
+---
+
+## 8. Môi trường & dependencies
 
 `pyproject.toml` (tối thiểu, để `pip install -e .` cài được package `vimmsd` từ `src/`):
 
@@ -305,14 +480,17 @@ OCR gồm 2 bước: PaddleOCR phát hiện vùng chữ, VietOCR nhận dạng t
 
 Không cần môi trường ảo phức tạp. Kaggle/Colab cài qua cell bootstrap, còn local thì chạy `pip install -r requirements.txt && pip install -e .` một lần. Kiểm tra nhanh (không cần GPU/mạng): `pytest tests`.
 
+Trên GPU server dùng `venv` (mục 7.1), cài `torch` theo đúng bản CUDA của driver, rồi cài `requirements.txt`. Trên server `paddlepaddle` nên thay bằng `paddlepaddle-gpu` nếu chạy OCR. Nếu sinh reasoning chậm với `transformers`, có thể cài thêm `vllm` để chạy teacher (Qwen2.5-VL) với batch lớn. Đây chỉ là tuỳ chọn, chưa có trong code.
+
 ---
 
-## 8. Bước tiếp theo
+## 9. Bước tiếp theo
 
 Khung code ở mục 2 đã có đủ (trừ `PLAN.md`). Việc cần làm để chạy thật:
 
 1. ~~`git init`, push lên GitHub, sửa `REPO` trong cell bootstrap~~ (đã xong: repo public [yunaLee21/Multimodal_Sarcasm_Detection](https://github.com/yunaLee21/Multimodal_Sarcasm_Detection), không cần `GITHUB_TOKEN`).
-2. Chạy `notebooks/00_dataset_check.ipynb` trên Kaggle (attach `hhhoang/vimmsd-dataset`), đối chiếu đường dẫn nó in ra với `paths.kaggle.data_dir` trong `configs/base.yaml`.
+2. Chạy `notebooks/00_dataset_check.ipynb` trên Kaggle (attach `phuclkz/vimmsd-private-dataset`), đối chiếu đường dẫn nó in ra với `paths.kaggle.data_dir` trong `configs/base.yaml`.
 3. Xử lý các điểm "CHÚ Ý" trong bảng tổng kết của notebook (tiền xử lý caption, cách chia val/test).
 4. Chạy `notebooks/00_template.ipynb` trên Kaggle để chắc chắn clone + import `vimmsd` + đọc dữ liệu hoạt động, rồi chạy `01_eda.ipynb` và `01b_image_text_extraction.ipynb` (tạo cache OCR + mô tả VLM, cần GPU).
 5. Sau đó các thành viên làm song song theo notebook 02–07, chỉnh hyperparameter qua config/`--override`, sửa code trong `src/` qua PR.
+6. GPU server (CoT distillation): viết các file đánh dấu "(dự kiến)" ở mục 2, theo thứ tự `preprocess_text.py` → `run_experiments.py` → `make_id_lists.py` → `generate_rationales.py` → `eval_teacher.py` → `build_rationale_dataset.py` → `embed_rationales.py`, cùng 3 shell script trong `scripts/server/`.

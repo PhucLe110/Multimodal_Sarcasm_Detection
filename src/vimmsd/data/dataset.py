@@ -17,21 +17,34 @@ from vimmsd.data.preprocessing import TextPreprocessor, clean_ocr
 
 logger = logging.getLogger(__name__)
 
-IGNORE_LABEL = -1  # mẫu không có nhãn (public test)
+IGNORE_LABEL = -1  # mẫu không có nhãn
 
 
-def load_records(json_path, image_dir, label2id, image_texts=None):
+def load_label_file(path):
+    """Đọc file nhãn tham chiếu của public/private test: {"results": {id: nhãn}, "phase": ...}."""
+    raw = json.loads(Path(path).read_text(encoding="utf-8"))
+    results = raw.get("results") if isinstance(raw, dict) else None
+    if not isinstance(results, dict):
+        raise ValueError(f"{path} cần object results (id -> nhãn)")
+    return {str(k): v for k, v in results.items()}
+
+
+def load_records(json_path, image_dir, label2id, image_texts=None, labels_path=None):
     """Đọc file annotation ViMMSD: {id: {"image", "caption", "label"}} (hoặc list các dict).
     Trả về list dict thống nhất: id, image_path, caption, label (int, -1 nếu không có nhãn).
-    image_texts: {"ocr": cache, "description": cache} tạo bởi scripts/extract_image_text.py."""
+    image_texts: {"ocr": cache, "description": cache} tạo bởi scripts/extract_image_text.py.
+    labels_path: file nhãn {"results": {id: nhãn}}, điền cho mẫu có label null."""
     with open(json_path, encoding="utf-8") as f:
         raw = json.load(f)
     items = raw.items() if isinstance(raw, dict) else ((str(i), r) for i, r in enumerate(raw))
+    ref_labels = load_label_file(labels_path) if labels_path else {}
 
     image_texts = image_texts or {}
     records, missing = [], Counter()
     for sid, r in items:
         label = r.get("label")
+        if label is None:
+            label = ref_labels.get(str(sid))
         rec = {
             "id": str(sid),
             "image_path": str(Path(image_dir) / r["image"]),
@@ -56,7 +69,7 @@ def load_records(json_path, image_dir, label2id, image_texts=None):
 
 
 def split_records(records, val_ratio, test_ratio, seed):
-    """Chia stratified train/val/test từ tập train có nhãn (public test của ViMMSD không có nhãn)."""
+    """Chia stratified train/val/test từ tập train có nhãn (data.split=random)."""
     labels = [r["label"] for r in records]
     holdout = val_ratio + test_ratio
     train, rest, _, rest_labels = train_test_split(
@@ -336,27 +349,67 @@ def uses_image_text(cfg):
     return bool(it_cfg.get("use_ocr") or it_cfg.get("use_description"))
 
 
+SEPARATE_IMAGE_TEXT_MODALITIES = ("text_aux", "multistream", "multistream_clip")
+
+
 def separates_image_text(cfg):
-    """Model 3.2: OCR và mô tả là hai feature riêng, không gộp vào caption."""
-    return cfg.model.get("modality") == "text_aux" and uses_image_text(cfg)
+    """Model 3.2 và fusion nhiều luồng: OCR và mô tả là feature riêng, không gộp vào caption."""
+    return cfg.model.get("modality") in SEPARATE_IMAGE_TEXT_MODALITIES and uses_image_text(cfg)
+
+
+def _load_test_split(cfg, key, label2id, image_texts):
+    """Đọc public_test / private_test kèm file nhãn nếu có. Trả về None nếu không thấy json."""
+    data_dir = Path(cfg.paths.data_dir)
+    name = cfg.data.get(f"{key}_json")
+    if not name or not (data_dir / name).exists():
+        return None
+    labels_name = cfg.data.get(f"{key}_labels")
+    labels_path = data_dir / labels_name if labels_name else None
+    if labels_path is not None and not labels_path.exists():
+        logger.warning("không thấy %s, %s không có nhãn", labels_path, key)
+        labels_path = None
+    return load_records(data_dir / name, data_dir / cfg.data[f"{key}_image_dir"], label2id, image_texts,
+                        labels_path=labels_path)
 
 
 def load_all_records(cfg):
-    """Trả về dict split -> records: train/val/test (chia từ tập có nhãn) và public_test (không nhãn)."""
+    """Trả về dict split -> records.
+
+    data.split=official: train = toàn bộ tập train, val = public test, test = private test (đều có nhãn).
+    data.split=random: train/val/test chia stratified từ tập train như trước.
+    Luôn kèm public_test / private_test (nếu có file) để xuất dự đoán theo định dạng nộp bài."""
     data_dir = Path(cfg.paths.data_dir)
     label2id = {l: i for i, l in enumerate(cfg.data.labels)}
     image_texts = load_image_texts(cfg)
 
     labeled = load_records(data_dir / cfg.data.train_json, data_dir / cfg.data.train_image_dir,
                            label2id, image_texts)
-    train, val, test = split_records(labeled, cfg.data.val_ratio, cfg.data.test_ratio, cfg.seed)
-    splits = {"train": train, "val": val, "test": test}
+    public = _load_test_split(cfg, "public_test", label2id, image_texts)
+    private = _load_test_split(cfg, "private_test", label2id, image_texts)
 
-    public_json = cfg.data.get("public_test_json")
-    if public_json and (data_dir / public_json).exists():
-        splits["public_test"] = load_records(data_dir / public_json,
-                                             data_dir / cfg.data.public_test_image_dir,
-                                             label2id, image_texts)
+    mode = cfg.data.get("split", "official")
+    if mode == "official":
+        for key, recs in (("public_test", public), ("private_test", private)):
+            if recs is None:
+                raise FileNotFoundError(f"data.split=official cần {key}: không thấy "
+                                        f"{data_dir / str(cfg.data.get(key + '_json'))}")
+            unlabeled = sum(r["label"] == IGNORE_LABEL for r in recs)
+            if unlabeled:
+                raise ValueError(f"data.split=official nhưng {unlabeled}/{len(recs)} mẫu {key} không có nhãn: "
+                                 f"kiểm tra data.{key}_labels, hoặc đặt data.split=random")
+        splits = {"train": labeled, "val": public, "test": private}
+    elif mode == "random":
+        split_seed = cfg.data.get("split_seed")  # cố định cách chia khi chạy nhiều seed train
+        train, val, test = split_records(labeled, cfg.data.val_ratio, cfg.data.test_ratio,
+                                         cfg.seed if split_seed is None else split_seed)
+        splits = {"train": train, "val": val, "test": test}
+    else:
+        raise ValueError(f"data.split không hợp lệ: {mode!r}, chọn official | random")
+
+    if public is not None:
+        splits["public_test"] = public
+    if private is not None:
+        splits["private_test"] = private
     return splits
 
 

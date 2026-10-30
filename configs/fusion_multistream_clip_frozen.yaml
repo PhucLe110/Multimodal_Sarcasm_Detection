@@ -1,0 +1,9 @@
+# Như fusion_multistream_frozen + vector CLIP đóng băng làm luồng thứ tư (dropout 0.2, cũng bị modality dropout 30%).
+# So với fusion_multistream_frozen: khi đã có chữ và mô tả từ ảnh, vector CLIP còn thêm được gì không.
+inherit: fusion_multistream_frozen.yaml
+model:
+  modality: multistream_clip
+  image_encoder:
+    freeze: true
+  fusion:
+    image_feature_dropout: 0.2

@@ -57,12 +57,109 @@ class ImageOnlyFusion(nn.Module):
 
 
 class ConcatFusion(nn.Module):
-    def __init__(self, text_dim, image_dim, **_):
+    """[t; i] với t = PhoBERT <s>, i = CLIP pooled. Mặc định nối thẳng như Phase 4.
+
+    Các tuỳ chọn chống việc head học thuộc tập train qua vector ảnh cố định (thấy ở fusion_concat_frozen:
+    train loss giảm nhanh hơn text-only, early stop sớm, lớp hiếm tụt):
+    - `proj_dim`: LayerNorm + Linear(proj_dim) riêng mỗi nhánh trước khi nối, để 2 vector cùng thang đo
+      (<s> của PhoBERT không qua LayerNorm cuối, pooled của CLIP đã qua `post_layernorm`).
+    - `image_feature_dropout`: dropout thường trên vector ảnh, chỉ khi train.
+    - `image_drop_prob` / `text_drop_prob`: modality dropout, mỗi mẫu train bị bỏ hẳn vector ảnh / text
+      (thay bằng 0) với xác suất tương ứng; không bao giờ bỏ cả hai trong cùng một mẫu (giữ text).
+      Bỏ ảnh buộc head phải phân loại được chỉ từ text, nên phần text không bị "loãng"."""
+
+    def __init__(self, text_dim, image_dim, proj_dim=None, image_feature_dropout=0.0,
+                 image_drop_prob=0.0, text_drop_prob=0.0, **_):
         super().__init__()
-        self.out_dim = text_dim + image_dim
+        if not (0 <= image_drop_prob < 1 and 0 <= text_drop_prob < 1):
+            raise ValueError("image_drop_prob và text_drop_prob phải trong [0, 1)")
+        self.image_drop_prob = float(image_drop_prob)
+        self.text_drop_prob = float(text_drop_prob)
+        self.image_feature_dropout = nn.Dropout(image_feature_dropout)
+        if proj_dim:
+            self.text_proj = nn.Sequential(nn.LayerNorm(text_dim), nn.Linear(text_dim, proj_dim))
+            self.image_proj = nn.Sequential(nn.LayerNorm(image_dim), nn.Linear(image_dim, proj_dim))
+            self.out_dim = 2 * proj_dim
+        else:
+            self.text_proj = self.image_proj = nn.Identity()
+            self.out_dim = text_dim + image_dim
 
     def forward(self, text, image):
-        return torch.cat([text["pooled"], image["pooled"]], dim=-1)
+        t = self.text_proj(text["pooled"])
+        i = self.image_proj(self.image_feature_dropout(image["pooled"]))
+        if self.training and (self.image_drop_prob or self.text_drop_prob):
+            B = t.shape[0]
+            drop_image = torch.rand(B, device=t.device) < self.image_drop_prob
+            drop_text = (torch.rand(B, device=t.device) < self.text_drop_prob) & ~drop_image
+            i = i * (~drop_image).unsqueeze(-1).to(i.dtype)
+            t = t * (~drop_text).unsqueeze(-1).to(t.dtype)
+        return torch.cat([t, i], dim=-1)
+
+
+class MultiStreamFusion(nn.Module):
+    """Nhiều luồng giữ riêng, nối vector: caption, chữ trong ảnh (OCR), mô tả ảnh (VLM), và vector CLIP nếu có.
+
+    Khác `TextAuxFusion` (cộng các luồng với hệ số đặt tay) và khác cách ghép chuỗi (OCR, mô tả thành segment 2
+    của caption): mỗi luồng qua LayerNorm + Linear(proj_dim) riêng rồi nối lại, head tự học trọng số, và vẫn biết
+    tín hiệu đến từ caption hay từ ảnh, đúng với cách chia nhãn text-sarcasm / image-sarcasm.
+
+    - Luồng chữ từ ảnh bị thiếu (ảnh không có chữ, không có mô tả) thành vector 0, kèm cờ có/không ở cuối vector,
+      để head không nhầm "không có chữ" với "chữ trung tính".
+    - `interactions`: thêm t*s và |t - s| giữa caption t và từng luồng chữ từ ảnh s, đo mức khớp/lệch giữa
+      caption và nội dung ảnh (sarcasm dạng nói một đằng, ảnh một nẻo).
+    - `aux_drop_prob`: modality dropout, mỗi mẫu train bỏ từng luồng từ ảnh (OCR, mô tả, CLIP) với xác suất này,
+      coi như luồng đó vắng mặt; buộc head dùng được caption khi thiếu ảnh. Caption không bao giờ bị bỏ.
+    - `image_feature_dropout`: dropout trên vector CLIP (chống học thuộc qua vector ảnh cố định, xem ConcatFusion)."""
+
+    AUX = ("ocr", "description")
+
+    def __init__(self, text_dim, image_dim=None, proj_dim=256, streams=AUX, interactions=True,
+                 aux_drop_prob=0.0, image_feature_dropout=0.0, **_):
+        super().__init__()
+        streams = tuple(streams)
+        if not streams or set(streams) - set(self.AUX):
+            raise ValueError(f"streams phải là tập con khác rỗng của {self.AUX}, nhận được {streams}")
+        if not 0 <= aux_drop_prob < 1:
+            raise ValueError("aux_drop_prob phải trong [0, 1)")
+        self.streams = streams
+        self.interactions = bool(interactions)
+        self.aux_drop_prob = float(aux_drop_prob)
+        self.use_image = image_dim is not None
+
+        def proj(dim):
+            return nn.Sequential(nn.LayerNorm(dim), nn.Linear(dim, proj_dim))
+
+        self.caption_proj = proj(text_dim)
+        self.aux_proj = nn.ModuleDict({name: proj(text_dim) for name in streams})
+        if self.use_image:
+            self.image_proj = proj(image_dim)
+            self.image_feature_dropout = nn.Dropout(image_feature_dropout)
+        n_streams = 1 + len(streams) + int(self.use_image)
+        self.out_dim = n_streams * proj_dim + len(streams) + (2 * proj_dim * len(streams) if self.interactions else 0)
+
+    def _keep(self, present):
+        """Cờ có mặt (B,) sau modality dropout: luồng bị bỏ được coi như vắng mặt."""
+        if self.training and self.aux_drop_prob:
+            present = present * (torch.rand_like(present) >= self.aux_drop_prob).to(present.dtype)
+        return present
+
+    def forward(self, text, image=None):
+        t = self.caption_proj(text["pooled"])
+        feats, flags, inter = [t], [], []
+        for name in self.streams:
+            if text.get(name) is None:
+                raise ValueError(f"thiếu luồng '{name}': bật data.image_text.use_{name} và dùng file image_preprocessed")
+            present = self._keep(text[f"{name}_present"].to(t.dtype))
+            s = self.aux_proj[name](text[name]) * present.unsqueeze(-1)
+            feats.append(s)
+            flags.append(present.unsqueeze(-1))
+            if self.interactions:
+                # luồng vắng mặt: s = 0 nên t*s = 0; |t - s| cũng phải về 0 để không lặp lại t
+                inter += [t * s, (t - s).abs() * present.unsqueeze(-1)]
+        if self.use_image:
+            i = self.image_proj(self.image_feature_dropout(image["pooled"]))
+            feats.append(i * self._keep(torch.ones_like(i[:, 0])).unsqueeze(-1))
+        return torch.cat(feats + inter + flags, dim=-1)
 
 
 class CrossAttentionBlock(nn.Module):
@@ -132,4 +229,6 @@ FUSIONS = {
     "image": ImageOnlyFusion,
     "concat": ConcatFusion,
     "cross_attn": CrossAttentionFusion,
+    "multistream": MultiStreamFusion,       # caption + OCR + mô tả VLM, không dùng CLIP
+    "multistream_clip": MultiStreamFusion,  # như trên + vector CLIP
 }

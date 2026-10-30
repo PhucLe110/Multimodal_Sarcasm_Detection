@@ -305,7 +305,10 @@ class TextPreprocessor:
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
         try:
-            path.write_text(json.dumps({"meta": meta, "texts": cache}, ensure_ascii=False), encoding="utf-8")
+            # ghi file tạm rồi đổi tên: tiến trình khác đang đọc (hoặc bị ngắt giữa lúc ghi) không gặp JSON dở dang
+            tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")
+            tmp.write_text(json.dumps({"meta": meta, "texts": cache}, ensure_ascii=False), encoding="utf-8")
+            tmp.replace(path)
         except OSError as e:
             raise OSError(f"không ghi được {path}. Copy cache sang thư mục ghi được "
                           "(trên Kaggle: /kaggle/working/cache) trước khi train.") from e
