@@ -34,13 +34,17 @@ def load_preds(run_dir, labels, split="val"):
     return df
 
 
-def aligned(runs_dir, names, seeds, labels):
+SPLIT_FILES = {"val": ("public_test_json", "public_test_labels", "public_test_image_dir"),
+               "test": ("private_test_json", "private_test_labels", "private_test_image_dir")}
+
+
+def aligned(runs_dir, names, seeds, labels, split="val"):
     """{model: [pred theo seed]}, y, ids — cùng thứ tự id; báo lỗi nếu các run không cùng tập mẫu."""
     preds, ids, y = {}, None, None
     for name in names:
         preds[name] = []
         for s in seeds:
-            df = load_preds(Path(runs_dir) / f"{name}_s{s}", labels)
+            df = load_preds(Path(runs_dir) / f"{name}_s{s}", labels, split)
             if ids is None:
                 ids = sorted(df.index, key=lambda x: (len(x), x))
                 y = df.loc[ids, "y"].to_numpy(int)
@@ -50,14 +54,15 @@ def aligned(runs_dir, names, seeds, labels):
     return preds, y, ids
 
 
-def val_groups(cfg, ids):
-    """Nhóm của các mẫu val (public test): caption chuẩn hoá hoặc md5 ảnh trùng, như fold nội bộ (mục 4.2)."""
+def split_groups(cfg, ids, split="val"):
+    """Nhóm của các mẫu đánh giá: caption chuẩn hoá hoặc md5 ảnh trùng, như fold nội bộ (mục 4.2)."""
     from vimmsd.data.denoise import file_md5
     from vimmsd.data.splits import build_groups
 
+    jk, _, ik = SPLIT_FILES[split]
     src = Path(cfg.paths.data_dir)
-    raw = json.loads((src / cfg.data.public_test_json).read_text(encoding="utf-8"))
-    image_dir = src / cfg.data.public_test_image_dir
+    raw = json.loads((src / cfg.data[jk]).read_text(encoding="utf-8"))
+    image_dir = src / cfg.data[ik]
     groups = build_groups({k: r["caption"] for k, r in raw.items()}, {k: file_md5(image_dir / r["image"]) for k, r in raw.items()})
     return np.array([groups[i] for i in ids])
 
@@ -71,9 +76,9 @@ def out_dir(runs_dir):
 def cmd_contrasts(args, cfg, labels):
     pairs = [p.split(":") for p in args.pairs]
     names = sorted({n for p in pairs for n in p})
-    preds, y, ids = aligned(args.runs_dir, names, args.seeds, labels)
+    preds, y, ids = aligned(args.runs_dir, names, args.seeds, labels, args.split)
     exclude = tuple(labels.index(x) for x in args.exclude)
-    groups = val_groups(cfg, ids) if args.group_bootstrap else None
+    groups = split_groups(cfg, ids, args.split) if args.group_bootstrap else None
     rows = []
     for a, b in pairs:
         r = {"contrast": f"{a} - {b}",
@@ -87,15 +92,16 @@ def cmd_contrasts(args, cfg, labels):
     for r, adj in zip(rows, S.holm([r["p_boot"] for r in rows])):
         r["p_holm"] = adj
     per_class = {n: [S.per_class(y, p, len(labels)) for p in preds[n]] for n in names}
-    result = {"family": args.family, "metric": "macro_f1" + (f" excluding {args.exclude}" if args.exclude else " (4 classes)"),
+    result = {"family": args.family, "split": args.split, "metric": "macro_f1" + (f" excluding {args.exclude}" if args.exclude else " (4 classes)"),
               "seeds": args.seeds, "n_examples": len(y), "n_boot": args.n_boot, "boot_seed": args.seed,
               "uncertainty": "bootstrap over evaluation examples with fixed trained models; not training randomness",
               "contrasts": rows, "per_class": per_class, **meta()}
-    write(args.runs_dir, f"contrasts_{args.family}", result, contrasts_md(result, labels))
+    write(args.runs_dir, f"contrasts_{args.family}" + ("" if args.split == "val" else f"_{args.split}"), result,
+          contrasts_md(result, labels))
 
 
 def contrasts_md(r, labels):
-    lines = [f"# {r['family']}: {r['metric']}, seeds {r['seeds']}, {r['n_examples']} examples", "",
+    lines = [f"# {r['family']} on {r['split']}: {r['metric']}, seeds {r['seeds']}, {r['n_examples']} examples", "",
              "| contrast | A | B | A − B (mean over seeds) | per seed | 95% CI | p | p (Holm) | group 95% CI |",
              "|---|---|---|---|---|---|---|---|---|"]
     for c in r["contrasts"]:
@@ -156,18 +162,19 @@ def cmd_pooled(args, cfg, labels):
           "\n".join(md) + "\n")
 
 
-def subset_masks(cfg, ids):
-    """Subset cố định trên val từ dữ liệu gốc (mục 6). Ngưỡng độ dài lấy từ train."""
+def subset_masks(cfg, ids, split="val"):
+    """Subset cố định trên split đánh giá từ dữ liệu gốc (mục 6). Ngưỡng độ dài lấy từ train."""
     from vimmsd.data.denoise import normalize_caption
     from vimmsd.data.preprocessing import SOURCE_TAG_RE
 
     src = Path(cfg.paths.data_dir)
     d = cfg.data
     train = json.loads((src / d.train_json).read_text(encoding="utf-8"))
-    val = json.loads((src / d.public_test_json).read_text(encoding="utf-8"))
-    refs = json.loads((src / d.public_test_labels).read_text(encoding="utf-8"))["results"]
+    jk, rk, ik = SPLIT_FILES[split]
+    val = json.loads((src / d[jk]).read_text(encoding="utf-8"))
+    refs = json.loads((src / d[rk]).read_text(encoding="utf-8"))["results"]
     image_text = json.loads((Path(cfg.paths.cache_dir) / d.image_text.file).read_text(encoding="utf-8"))["images"]
-    image_dir = Path(d.public_test_image_dir).name
+    image_dir = Path(d[ik]).name
     cap = {i: normalize_caption(val[i]["caption"]) for i in ids}
     train_caps = {normalize_caption(r["caption"]) for r in train.values()}
     q1, q2 = np.quantile([len(r["caption"].split()) for r in train.values()], [1 / 3, 2 / 3])
@@ -179,7 +186,7 @@ def subset_masks(cfg, ids):
     m = lambda f: np.array([f(i) for i in ids])
     return {
         "all": m(lambda i: True),
-        "duplicate caption with differing labels (within val)": m(lambda i: len(labels_by_cap[cap[i]]) > 1),
+        f"duplicate caption with differing labels (within {split})": m(lambda i: len(labels_by_cap[cap[i]]) > 1),
         f"caption length short (<= {q1:.0f} words, train tertile)": m(lambda i: length[i] <= q1),
         f"caption length medium": m(lambda i: q1 < length[i] <= q2),
         f"caption length long (> {q2:.0f} words)": m(lambda i: length[i] > q2),
@@ -193,17 +200,18 @@ def subset_masks(cfg, ids):
 
 
 def cmd_subsets(args, cfg, labels):
-    preds, y, ids = aligned(args.runs_dir, args.models, args.seeds, labels)
+    preds, y, ids = aligned(args.runs_dir, args.models, args.seeds, labels, args.split)
     exclude = tuple(labels.index(x) for x in args.exclude)
-    rows = S.subset_table(y, preds, subset_masks(cfg, ids), len(labels), exclude)
-    md = ["# Fixed val subsets (descriptive; small subsets are not evidence)", "",
+    rows = S.subset_table(y, preds, subset_masks(cfg, ids, args.split), len(labels), exclude)
+    md = [f"# Fixed {args.split} subsets (descriptive; small subsets are not evidence)", "",
           "Macro-F1 over the classes present in each subset (absent classes are not scored as 0).", "",
           "| subset | support | labels " + "/".join(x[:5] for x in labels) + " | " + " | ".join(args.models) + " |",
           "|---" * (3 + len(args.models)) + "|"]
     for r in rows:
         md.append(f"| {r['subset']} | {r['support']} | {'/'.join(map(str, r['labels']))} | "
                   + " | ".join("—" if r[m] is None else f"{r[m]:.4f}" for m in args.models) + " |")
-    write(args.runs_dir, "subsets_" + "_".join(args.models), {"rows": rows, "seeds": args.seeds, **meta()}, "\n".join(md) + "\n")
+    write(args.runs_dir, "subsets_" + "_".join(args.models) + ("" if args.split == "val" else f"_{args.split}"),
+          {"rows": rows, "seeds": args.seeds, "split": args.split, **meta()}, "\n".join(md) + "\n")
 
 
 def meta():
@@ -229,6 +237,8 @@ def main():
         p.add_argument("--exclude", nargs="*", default=[])
         if name in ("contrasts", "subsets"):
             p.add_argument("--seeds", nargs="+", type=int, default=[1, 2, 42])
+            p.add_argument("--split", choices=["val", "test"], default="val",
+                           help="test = private test: chỉ dùng ở bước đánh giá cuối với danh sách model đã cố định")
         if name == "contrasts":
             p.add_argument("--family", required=True)
             p.add_argument("--pairs", nargs="+", required=True, help="A:B, hiệu = A − B")

@@ -1,0 +1,24 @@
+# Empirical study, Phase 4: final benchmark for the frozen finalists (reports/empirical_phase4_freeze.md).
+# Every run here is already trained; run with --extra-eval test so only evaluate.py --split test runs:
+#   VIMMSD_ENV=server python scripts/run_experiments.py --plan configs/experiments/empirical_final.yaml --gpu-ids 0 --extra-eval test
+# Names and overrides must match empirical_A.yaml / empirical_phase3.yaml exactly; check with --dry-run first.
+name: empirical_final
+seeds: [1, 2, 42]
+overrides:
+  - train.eval_test=false
+  - train.select_metric=macro_f1
+  - train.select_exclude_labels=[text-sarcasm]
+  - train.num_workers=0
+evaluate: [val]
+refresh_report: false
+runs:
+  - config: configs/text_only_frozen.yaml
+    name: empA_T
+  - config: configs/fusion_concat_frozen_reg.yaml
+    name: empA_C
+  - config: configs/fusion_concat_frozen_reg.yaml
+    name: empB1_C
+    overrides: [loss.class_weight=sqrt_inverse]
+  - config: configs/text_only_frozen.yaml
+    name: empE_T_B1
+    overrides: [loss.class_weight=sqrt_inverse]
