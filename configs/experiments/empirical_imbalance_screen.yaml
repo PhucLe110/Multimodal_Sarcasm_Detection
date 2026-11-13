@@ -1,0 +1,26 @@
+# Experiment C mục 8.1 (docs/empirical_analysis_plan.md): screening xử lý mất cân bằng lớp trên backbone C
+# (fusion_concat_frozen_reg). 3 cột đầu của ma trận: B0 CE / B1 CE + class weight sqrt_inverse / B3 focal γ=2
+# (không class weight). B2 (sampling) và B4/B5 (augmentation) là task riêng, bổ sung vào plan này sau.
+#
+# Quy tắc chọn (mục 4.3): chỉ seed 42 ở bước screen; seeds 1/2/42 chạy ở bước confirm (mục 8.4).
+# Không chấm private test khi đang phát triển: train.eval_test=false và evaluate=[] — private test chỉ chấm
+# một lần ở bước cuối bằng run_experiments.py --extra-eval test sau khi đã chống kỹ thuật.
+# Chọn checkpoint theo macro-F1 bỏ text-sarcasm (val chỉ có 1 mẫu text-sarcasm).
+#
+# Chạy:
+#   python scripts/run_experiments.py --plan configs/experiments/empirical_imbalance_screen.yaml
+#   python scripts/run_experiments.py --plan configs/experiments/empirical_imbalance_screen.yaml --dry-run   # chỉ in lệnh
+name: empirical_imbalance_screen
+seeds: [42]
+overrides:
+  - data.split_seed=42
+  - train.eval_test=false
+  - train.select_exclude_labels=[text-sarcasm]
+evaluate: []
+runs:
+  - config: configs/fusion_concat_frozen_reg.yaml
+    name: emp_c_ce      # B0: CE, natural sampling
+  - config: configs/fusion_concat_frozen_reg_cw.yaml
+    name: emp_c_cw      # B1: CE + class weight sqrt_inverse
+  - config: configs/fusion_concat_frozen_reg_focal.yaml
+    name: emp_c_focal   # B3: focal γ=2, không class weight
