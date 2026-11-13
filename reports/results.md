@@ -52,3 +52,6 @@ Mỗi lần train xong, `scripts/train.py` in ra 1 dòng kết quả (và ghi v�
 | 2026-11-10 | `text_only_clean_s2` | `b25b4e1` | server | 0.3808 | 0.3754 | 4.5 | plan denoise_compare | peak VRAM 3.31 GB |
 | 2026-11-10 | `image_only_orig_s2` | `b25b4e1` | server | 0.3443 | 0.3469 | 5.3 | plan denoise_compare | peak VRAM 1.65 GB |
 | 2026-11-10 | `image_only_clean_s2` | `b25b4e1` | server | 0.3549 | 0.3546 | 5.3 | plan denoise_compare | peak VRAM 1.65 GB |
+| 2026-11-13 | `emp_c_ce_s42` | `7a04f25` | kaggle | 0.3969 | nan | 30.5 | plan empirical_imbalance_screen | peak VRAM 1.25 GB |
+| 2026-11-13 | `emp_c_cw_s42` | `7a04f25` | kaggle | 0.4141 | nan | 30.0 | plan empirical_imbalance_screen | peak VRAM 1.25 GB |
+| 2026-11-13 | `emp_c_focal_s42` | `7a04f25` | kaggle | 0.3654 | nan | 8.7 | plan empirical_imbalance_screen | peak VRAM 1.25 GB |
