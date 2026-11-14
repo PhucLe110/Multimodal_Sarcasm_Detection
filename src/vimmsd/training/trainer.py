@@ -155,7 +155,10 @@ class Trainer:
             metrics, _ = self.evaluate("val")
             score = selection_score(metrics, self.select_metric, self.select_exclude)
             self.history.append({"epoch": epoch, "train_loss": train_loss, "val_macro_f1": metrics["macro_f1"],
-                                 "val_select": score})
+                                 "val_select": score, "val_weighted_f1": metrics["weighted_f1"],
+                                 "val_accuracy": metrics["accuracy"],
+                                 "val_f1": {c: m["f1"] for c, m in metrics["per_class"].items()}})
+            (self.output_dir / "history.json").write_text(json.dumps(self.history, indent=2))
             logger.info("epoch %d | train loss %.4f | val chọn checkpoint (%s) %.4f | val %s", epoch + 1, train_loss,
                         self.select_metric + (f" bỏ {self.select_exclude}" if self.select_exclude else ""), score,
                         format_metrics(metrics))

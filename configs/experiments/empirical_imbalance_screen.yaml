@@ -1,6 +1,7 @@
 # Experiment C mục 8.1 (docs/empirical_analysis_plan.md): screening xử lý mất cân bằng lớp trên backbone C
-# (fusion_concat_frozen_reg). 3 cột đầu của ma trận: B0 CE / B1 CE + class weight sqrt_inverse / B3 focal γ=2
-# (không class weight). B2 (sampling) và B4/B5 (augmentation) là task riêng, bổ sung vào plan này sau.
+# (fusion_concat_frozen_reg): B0 CE / B1 CE + class weight sqrt_inverse / B2 oversampling √ nghịch đảo tần suất /
+# B3 focal γ=2 (không class weight) / B4 augmentation caption lớp hiếm / B5 augmentation + class weight.
+# B4/B5 cần manifest augmentation trong paths.cache_dir: chạy scripts/augment_captions.py trước (notebook 09).
 #
 # Quy tắc chọn (mục 4.3): chỉ seed 42 ở bước screen; seeds 1/2/42 chạy ở bước confirm (mục 8.4).
 # Không chấm private test khi đang phát triển: train.eval_test=false và evaluate=[] — private test chỉ chấm
@@ -24,3 +25,9 @@ runs:
     name: emp_c_cw      # B1: CE + class weight sqrt_inverse
   - config: configs/fusion_concat_frozen_reg_focal.yaml
     name: emp_c_focal   # B3: focal γ=2, không class weight
+  - config: configs/fusion_concat_frozen_reg_oversample.yaml
+    name: emp_c_oversample   # B2: CE + oversampling sqrt inverse-frequency
+  - config: configs/fusion_concat_frozen_reg_aug.yaml
+    name: emp_c_aug          # B4: CE + augmentation caption lớp hiếm
+  - config: configs/fusion_concat_frozen_reg_aug_cw.yaml
+    name: emp_c_aug_cw       # B5: augmentation + class weight sqrt_inverse

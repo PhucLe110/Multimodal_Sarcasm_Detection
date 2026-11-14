@@ -8,10 +8,10 @@ import numpy as np
 import torch
 from PIL import Image
 from sklearn.model_selection import train_test_split
-from torch.utils.data import DataLoader, Dataset, WeightedRandomSampler
+from torch.utils.data import DataLoader, Dataset, RandomSampler, WeightedRandomSampler
 from torchvision import transforms
 
-from vimmsd.data.augmentation import build_image_augment
+from vimmsd.data.augmentation import augment_records, build_image_augment, read_manifest
 from vimmsd.data.image_io import PadToSquare, encoder_mean_color, open_image_rgb
 from vimmsd.data.image_text import compose_image_text, image_key
 from vimmsd.data.preprocessing import CAPTION_FILTERS, TextPreprocessor, clean_ocr
@@ -432,7 +432,29 @@ def load_all_records(cfg):
     if fold.get("index") is not None:
         held_out = fold_of(splits["train"], fold.get("k", 5), fold.get("seed", 42))
         splits["train"] = [r for r in splits["train"] if held_out[r["id"]] != fold["index"]]
+    splits["train"] = splits["train"] + load_augmented_records(cfg, splits["train"])
     return apply_caption_filter(splits, cfg.data.get("caption_filter"))
+
+
+def augment_manifest_path(cfg):
+    aug = cfg.data.get("augment") or {}
+    if not aug.get("file"):
+        return None
+    path = Path(aug["file"])
+    return path if path.is_absolute() else Path(cfg.paths.cache_dir) / path
+
+
+def load_augmented_records(cfg, train_records):
+    """Bản augmentation đã duyệt của data.augment.file (scripts/augment_captions.py), chỉ cho mẫu đang ở train."""
+    path = augment_manifest_path(cfg)
+    if path is None:
+        return []
+    if not path.exists():
+        raise FileNotFoundError(f"không thấy manifest augmentation {path}: chạy scripts/augment_captions.py trước")
+    extra = augment_records(train_records, read_manifest(path), bool(cfg.data.augment.get("require_review")))
+    logger.info("augmentation: thêm %d mẫu từ %s | %s", len(extra), path,
+                dict(Counter(cfg.data.labels[r["label"]] for r in extra)))
+    return extra
 
 
 def fold_of(records, k=5, seed=42):
@@ -563,15 +585,61 @@ def class_counts(dataset, num_classes):
     return [counts.get(i, 0) for i in range(num_classes)]
 
 
-def build_train_sampler(dataset, num_classes, mode):
+def draws_per_epoch(dataset):
+    """Số mẫu rút mỗi epoch: bằng số mẫu train gốc (không tính bản augmentation), để mọi kỹ thuật cân bằng lớp
+    có cùng số bước cập nhật mỗi epoch như CE thường (docs/empirical_analysis_plan.md mục 8.1)."""
+    return sum(not r.get("parent_id") for r in dataset.records)
+
+
+def sampling_weights(labels, num_classes, power):
+    """Trọng số rút mẫu: mẫu lớp c nhận n_c^-power, nên tỉ lệ lớp c trong mỗi epoch tỉ lệ với n_c^(1-power).
+    power=1: mọi lớp ngang nhau; power=0.5: căn bậc hai nghịch đảo tần suất (B2), nhẹ tay hơn với lớp hiếm."""
+    counts = Counter(labels)
+    missing = [c for c in range(num_classes) if not counts.get(c)]
+    if missing:
+        logger.warning("lớp %s không có mẫu train, bỏ khỏi sampler", missing)
+    return [counts[l] ** -power for l in labels]
+
+
+def build_train_sampler(dataset, num_classes, mode, power=1.0, seed=None):
+    """random: None khi không có augmentation (DataLoader tự xáo, giữ nguyên hành vi cũ); có augmentation thì rút
+    không lặp đúng draws_per_epoch mẫu. weighted: rút có lặp theo sampling_weights."""
+    generator = torch.Generator().manual_seed(seed) if seed is not None else None
+    n = draws_per_epoch(dataset)
     if mode == "random":
-        return None
+        if n == len(dataset):
+            return None
+        return RandomSampler(dataset, replacement=False, num_samples=n, generator=generator)
     if mode == "weighted":
-        # oversampling: mỗi lớp được lấy mẫu với xác suất ngang nhau
-        counts = class_counts(dataset, num_classes)
-        weights = [1.0 / counts[l] for l in dataset.labels]
-        return WeightedRandomSampler(weights, num_samples=len(weights), replacement=True)
+        weights = sampling_weights(dataset.labels, num_classes, power)
+        return WeightedRandomSampler(weights, num_samples=n, replacement=True, generator=generator)
     raise ValueError(f"sampler không hợp lệ: {mode}")
+
+
+def sampling_summary(dataset, labels, sampler):
+    """Mỗi lớp: số mẫu (kể cả augmentation), số bản augmentation, số lần rút kỳ vọng mỗi epoch
+    và số mẫu khác nhau kỳ vọng được thấy mỗi epoch."""
+    n = draws_per_epoch(dataset)
+    rows = {}
+    if isinstance(sampler, WeightedRandomSampler):
+        weights = sampler.weights.double()
+        probs = (weights / weights.sum()).tolist()
+    else:
+        probs = [1.0 / len(dataset)] * len(dataset)
+    for c, name in enumerate(labels):
+        idx = [i for i, l in enumerate(dataset.labels) if l == c]
+        p = [probs[i] for i in idx]
+        if isinstance(sampler, WeightedRandomSampler):
+            unique = sum(1 - (1 - q) ** n for q in p)
+        else:
+            unique = n * sum(p)
+        rows[name] = {
+            "samples": len(idx),
+            "augmented": sum(bool(dataset.records[i].get("parent_id")) for i in idx),
+            "draws_per_epoch": n * sum(p),
+            "unique_seen_per_epoch": unique,
+        }
+    return {"draws_per_epoch": n, "dataset_size": len(dataset), "classes": rows}
 
 
 def build_dataloaders(cfg, datasets, collator):
@@ -579,7 +647,8 @@ def build_dataloaders(cfg, datasets, collator):
     loaders = {}
     for split, ds in datasets.items():
         is_train = split == "train"
-        sampler = build_train_sampler(ds, num_classes, cfg.data.sampler) if is_train else None
+        sampler = build_train_sampler(ds, num_classes, cfg.data.sampler, cfg.data.get("sampler_power", 1.0),
+                                      cfg.seed) if is_train else None
         loaders[split] = DataLoader(
             ds,
             batch_size=cfg.train.batch_size if is_train else cfg.train.eval_batch_size,

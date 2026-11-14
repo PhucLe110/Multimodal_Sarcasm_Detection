@@ -47,6 +47,11 @@ data:
   image_resize: pad    # pad (letterbox vuông, giữ toàn bộ ảnh) | crop (center-crop của processor, như code cũ)
   image_augment: false # crop 90-100% + chỉnh sáng/tương phản, chỉ khi train
   sampler: random     # random | weighted (oversampling lớp hiếm)
+  sampler_power: 1.0  # weighted: mẫu lớp c được rút với trọng số n_c^-power; 1 = các lớp ngang nhau, 0.5 = căn bậc hai nghịch đảo
+  # Augmentation caption lớp hiếm (scripts/augment_captions.py): mỗi mẫu gốc thêm tối đa 1 bản đã duyệt, chỉ vào train
+  augment:
+    file: null             # manifest .jsonl, đường dẫn tương đối với paths.cache_dir; null = không augmentation
+    require_review: false  # true: chỉ dùng bản người duyệt đã accept; false: dùng kết quả lọc tự động khi chưa duyệt
   # Tiền xử lý ảnh thành text (tạo trước bằng scripts/extract_image_text.py, xem notebooks/01b):
   # chữ trong ảnh (OCR) + mô tả ảnh (VLM), ghép thành segment thứ 2 của PhoBERT cạnh caption.
   image_text:
