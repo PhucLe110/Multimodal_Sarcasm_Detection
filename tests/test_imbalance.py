@@ -6,7 +6,6 @@ from collections import Counter
 from pathlib import Path
 
 import pytest
-import torch
 from PIL import Image
 from torch.utils.data import WeightedRandomSampler
 
