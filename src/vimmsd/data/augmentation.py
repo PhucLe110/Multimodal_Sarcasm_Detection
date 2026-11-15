@@ -70,6 +70,7 @@ ACCEPT, REJECT = "accept", "reject"
 LABEL_WORDS = ("sarcasm", "sarcastic", "mỉa mai", "châm biếm", "giễu cợt")
 MAX_SIMILARITY = 0.9
 LENGTH_RATIO = (0.6, 1.6)
+PARENT_WORDS = (3, 150)  # caption quá ngắn không có gì để diễn đạt lại; quá dài thì bị cắt khi dịch (256 token)
 
 
 def normalize_caption(text):
@@ -99,12 +100,16 @@ def auto_review(parent, candidate, known_captions):
     """Lọc tự động một bản augmentation, trả về (verdict, lý do, độ giống với caption gốc).
     Chỉ bắt lỗi kiểm được bằng luật; giữ nghĩa, ý mỉa mai và nhãn modality cần người duyệt (cột review)."""
     norm, norm_parent = normalize_caption(candidate), normalize_caption(parent)
-    similarity = difflib.SequenceMatcher(None, norm_parent, norm).ratio()
+    # autojunk=False: mặc định difflib bỏ qua ký tự phổ biến khi chuỗi dài > 200, làm độ giống của caption dài gần 0
+    similarity = difflib.SequenceMatcher(None, norm_parent, norm, autojunk=False).ratio()
     reasons = []
+    n_parent = len(norm_parent.split())
+    if not PARENT_WORDS[0] <= n_parent <= PARENT_WORDS[1]:
+        reasons.append(f"caption gốc {'quá ngắn' if n_parent < PARENT_WORDS[0] else 'quá dài'} ({n_parent} từ)")
     if not norm:
         reasons.append("rỗng")
     else:
-        ratio = len(norm.split()) / max(len(norm_parent.split()), 1)
+        ratio = len(norm.split()) / max(n_parent, 1)
         if similarity > MAX_SIMILARITY:
             reasons.append("gần như trùng caption gốc")
         if not LENGTH_RATIO[0] <= ratio <= LENGTH_RATIO[1]:
@@ -128,12 +133,13 @@ def final_verdict(row, require_review=False):
 
 
 def accepted_variants(rows, require_review=False, max_per_parent=1):
-    """{parent_id: [row]}: mỗi mẫu gốc giữ tối đa max_per_parent bản được accept, ưu tiên bản khác caption gốc nhất."""
+    """{parent_id: [row]}: mỗi mẫu gốc giữ tối đa max_per_parent bản được accept, ưu tiên bản giống caption gốc nhất
+    (đã qua ngưỡng gần trùng): bản khác nhiều nhất thường là bản dịch sai nghĩa, dễ làm lệch nhãn."""
     by_parent = defaultdict(list)
     for row in rows:
         if final_verdict(row, require_review) == ACCEPT:
             by_parent[row["parent_id"]].append(row)
-    return {pid: sorted(items, key=lambda r: (r["similarity"], r["candidate"]))[:max_per_parent]
+    return {pid: sorted(items, key=lambda r: (-r["similarity"], r["candidate"]))[:max_per_parent]
             for pid, items in by_parent.items()}
 
 

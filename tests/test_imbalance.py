@@ -85,6 +85,14 @@ def test_auto_review_rejects_rule_violations():
     assert "lặp từ" in auto_review(parent, "đi đi đi đi chơi với 2 bạn thân trời đẹp", known)[1]
     assert "trùng caption khác trong train" in auto_review("Một caption khác, trong train!", "một caption khác trong train", known)[1]
     assert auto_review(parent, "  ", known)[1] == ["rỗng"]
+    assert auto_review("-kem", "Dày", known)[1] == ["caption gốc quá ngắn (1 từ)"]
+    assert "caption gốc quá dài (151 từ)" in auto_review(" ".join(["chữ"] * 151), "một bản dịch", known)[1]
+
+
+def test_similarity_of_long_captions_is_not_collapsed_by_autojunk():
+    parent = "Cách kiếm 1 triệu nhanh nhất là lên Shopee thu thập voucher. " * 6
+    candidate = "Cách kiếm được 1 triệu nhanh nhất là vào Shopee để thu thập voucher. " * 6
+    assert auto_review(parent, candidate, set())[2] > 0.8
 
 
 def test_restore_emojis_appends_lost_emojis_once():
@@ -99,7 +107,7 @@ def row(pid, k, caption, verdict=ACCEPT, similarity=0.5, review=None, parent_cap
 
 
 def test_accepted_variants_keep_one_per_parent_and_respect_review():
-    rows = [row("1_0", 0, "a", similarity=0.7), row("1_0", 1, "b", similarity=0.4),
+    rows = [row("1_0", 0, "a", similarity=0.4), row("1_0", 1, "b", similarity=0.7),
             row("1_1", 0, "c", verdict=REJECT), row("1_1", 1, "d", verdict=REJECT, review="accept"),
             row("1_2", 0, "e", review="reject")]
     chosen = accepted_variants(rows)
