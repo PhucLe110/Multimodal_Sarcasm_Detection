@@ -37,3 +37,6 @@ reports/environment_setup.pdf
 scripts/md_to_pdf.py
 cache_file/
 output/
+
+# local prompts for the GPU server, copy-paste only
+docs/prompts/
