@@ -8,7 +8,7 @@ import numpy as np
 import torch
 from PIL import Image
 from sklearn.model_selection import train_test_split
-from torch.utils.data import DataLoader, Dataset, RandomSampler, WeightedRandomSampler
+from torch.utils.data import DataLoader, Dataset, RandomSampler, Sampler, WeightedRandomSampler
 from torchvision import transforms
 
 from vimmsd.data.augmentation import augment_records, build_image_augment, read_manifest
@@ -429,11 +429,63 @@ def load_all_records(cfg):
     if private is not None:
         splits["private_test"] = private
     fold = cfg.data.get("fold") or {}
-    if fold.get("index") is not None:
+    if fold.get("manifest"):
+        if cfg.train.get("eval_test", True):
+            raise ValueError("data.fold.manifest là chế độ phát triển nội bộ: đặt train.eval_test=false "
+                             "(docs/empirical_analysis_plan.md mục 4.3)")
+        manifest = json.loads(Path(fold["manifest"]).read_text(encoding="utf-8"))
+        from vimmsd.data.splits import file_sha256
+
+        splits = apply_fold_manifest(splits, manifest, fold.get("index"), file_sha256(data_dir / cfg.data.train_json))
+    elif fold.get("index") is not None:
         held_out = fold_of(splits["train"], fold.get("k", 5), fold.get("seed", 42))
         splits["train"] = [r for r in splits["train"] if held_out[r["id"]] != fold["index"]]
-    splits["train"] = splits["train"] + load_augmented_records(cfg, splits["train"])
+    aug = cfg.data.get("augmentation") or {}
+    if aug.get("manifest"):
+        variants = [json.loads(line) for line in Path(aug["manifest"]).read_text(encoding="utf-8").splitlines() if line.strip()]
+        splits = apply_augmentation(splits, variants, label2id)
+    originals = [r for r in splits["train"] if not r.get("parent_id")]
+    splits["train"] = splits["train"] + load_augmented_records(cfg, originals)
     return apply_caption_filter(splits, cfg.data.get("caption_filter"))
+
+
+def apply_augmentation(splits, variants, label2id):
+    """Thêm biến thể đã duyệt (augmentation_manifest.jsonl, scripts/augment_minority.py) vào train: chỉ biến thể có
+    mẫu gốc nằm trong phần train hiện tại (sau khi tách fold), nên không biến thể nào rơi vào val/test hay đi kèm
+    mẫu gốc đang bị giữ lại. Biến thể chép ảnh, OCR, mô tả của mẫu gốc, chỉ thay caption; parent_id = id mẫu gốc."""
+    by_id = {r["id"]: r for r in splits["train"]}
+    added = []
+    for v in variants:
+        parent = by_id.get(str(v["parent_id"]))
+        if parent is None:
+            continue
+        if label2id[v["label"]] != parent["label"]:
+            raise ValueError(f"biến thể {v['variant_id']} mang nhãn {v['label']} khác nhãn mẫu gốc {v['parent_id']}")
+        added.append({**parent, "id": v["variant_id"], "caption": v["caption"], "parent_id": parent["id"]})
+    out = dict(splits)
+    out["train"] = splits["train"] + added
+    logger.info("augmentation: thêm %d/%d biến thể (mẫu gốc thuộc phần train)", len(added), len(variants))
+    return out
+
+
+def apply_fold_manifest(splits, manifest, index, train_sha256):
+    """Fold nội bộ có nhóm (scripts/build_empirical_splits.py): train = các fold khác, val = fold `index` của train.
+    Báo lỗi nếu manifest được tạo từ file train khác, thiếu id, hoặc index ngoài khoảng."""
+    meta, folds = manifest["meta"], manifest["folds"]
+    expected = meta["checksums"]["train"]["json_sha256"]
+    if expected != train_sha256:
+        raise ValueError(f"manifest fold tạo từ train sha256 {expected[:12]}, file train hiện tại {train_sha256[:12]}")
+    if index is None or index not in range(meta["k"]):
+        raise ValueError(f"data.fold.index phải trong 0..{meta['k'] - 1}, nhận {index!r}")
+    missing = [r["id"] for r in splits["train"] if r["id"] not in folds]
+    if missing:
+        raise ValueError(f"{len(missing)} mẫu train không có trong manifest fold, vd {missing[:3]}")
+    out = dict(splits)
+    out["train"] = [r for r in splits["train"] if folds[r["id"]] != index]
+    out["val"] = [r for r in splits["train"] if folds[r["id"]] == index]
+    logger.info("fold %d/%d từ manifest (seed %s): train %d | val (fold giữ lại) %d", index, meta["k"], meta["seed"],
+                len(out["train"]), len(out["val"]))
+    return out
 
 
 def augment_manifest_path(cfg):
@@ -585,41 +637,78 @@ def class_counts(dataset, num_classes):
     return [counts.get(i, 0) for i in range(num_classes)]
 
 
+class EpochBudgetSampler(Sampler):
+    """Lấy đúng `num_samples` chỉ số mỗi epoch, không lặp trong một lượt hoán vị: hết lượt thì sang hoán vị mới,
+    phần dư nối sang epoch sau. Dùng cho train.steps_per_epoch khi lấy mẫu tự nhiên (sampler: random), để số bước
+    tối ưu mỗi epoch không phụ thuộc cỡ tập train (vd sau khi thêm mẫu augmentation)."""
+
+    def __init__(self, n, num_samples, generator=None):
+        self.n, self.num_samples, self.generator = n, num_samples, generator
+        self._queue = []
+
+    def __iter__(self):
+        out = []
+        while len(out) < self.num_samples:
+            if not self._queue:
+                self._queue = torch.randperm(self.n, generator=self.generator).tolist()
+            take = min(self.num_samples - len(out), len(self._queue))
+            out += self._queue[:take]
+            self._queue = self._queue[take:]
+        return iter(out)
+
+    def __len__(self):
+        return self.num_samples
+
+
 def draws_per_epoch(dataset):
     """Số mẫu rút mỗi epoch: bằng số mẫu train gốc (không tính bản augmentation), để mọi kỹ thuật cân bằng lớp
-    có cùng số bước cập nhật mỗi epoch như CE thường (docs/empirical_analysis_plan.md mục 8.1)."""
-    return sum(not r.get("parent_id") for r in dataset.records)
+    có cùng số bước cập nhật mỗi epoch như CE thường (docs/empirical_analysis_plan.md mục 8.1).
+    Dataset không có `records` (vd dataset giả trong test) thì coi mọi mẫu là mẫu gốc."""
+    records = getattr(dataset, "records", None)
+    if records is None:
+        return len(dataset)
+    return sum(not r.get("parent_id") for r in records)
 
 
 def sampling_weights(labels, num_classes, power):
     """Trọng số rút mẫu: mẫu lớp c nhận n_c^-power, nên tỉ lệ lớp c trong mỗi epoch tỉ lệ với n_c^(1-power).
-    power=1: mọi lớp ngang nhau; power=0.5: căn bậc hai nghịch đảo tần suất (B2), nhẹ tay hơn với lớp hiếm."""
+    power=1: mọi lớp ngang nhau; power=0.5: căn bậc hai nghịch đảo tần suất (B2), nhẹ tay hơn với lớp hiếm; 0: tự nhiên.
+    Đếm trên chính tập train đưa vào."""
     counts = Counter(labels)
     missing = [c for c in range(num_classes) if not counts.get(c)]
     if missing:
         logger.warning("lớp %s không có mẫu train, bỏ khỏi sampler", missing)
-    return [counts[l] ** -power for l in labels]
+    return [float(counts[l]) ** -power for l in labels]
 
 
-def build_train_sampler(dataset, num_classes, mode, power=1.0, seed=None):
-    """random: None khi không có augmentation (DataLoader tự xáo, giữ nguyên hành vi cũ); có augmentation thì rút
-    không lặp đúng draws_per_epoch mẫu. weighted: rút có lặp theo sampling_weights."""
+def build_train_sampler(dataset, num_classes, mode, power=None, num_samples=None, seed=None):
+    """mode: random (tự nhiên) | weighted (power mặc định 1) | power (bắt buộc truyền power).
+    num_samples: số mẫu rút mỗi epoch (train.steps_per_epoch × batch × grad_accum); None = draws_per_epoch.
+    random không đặt num_samples và không có augmentation: trả None (DataLoader tự xáo, giữ nguyên hành vi cũ)."""
     generator = torch.Generator().manual_seed(seed) if seed is not None else None
-    n = draws_per_epoch(dataset)
     if mode == "random":
+        if num_samples is not None:
+            return EpochBudgetSampler(len(dataset), num_samples, generator)
+        n = draws_per_epoch(dataset)
         if n == len(dataset):
             return None
         return RandomSampler(dataset, replacement=False, num_samples=n, generator=generator)
     if mode == "weighted":
-        weights = sampling_weights(dataset.labels, num_classes, power)
-        return WeightedRandomSampler(weights, num_samples=n, replacement=True, generator=generator)
-    raise ValueError(f"sampler không hợp lệ: {mode}")
+        power = 1.0 if power is None else power
+    elif mode == "power":
+        if power is None:
+            raise ValueError("data.sampler=power cần data.sampler_power (vd 0.5)")
+    else:
+        raise ValueError(f"sampler không hợp lệ: {mode}")
+    weights = sampling_weights(dataset.labels, num_classes, power)
+    return WeightedRandomSampler(weights, num_samples=num_samples or draws_per_epoch(dataset), replacement=True,
+                                 generator=generator)
 
 
 def sampling_summary(dataset, labels, sampler):
     """Mỗi lớp: số mẫu (kể cả augmentation), số bản augmentation, số lần rút kỳ vọng mỗi epoch
     và số mẫu khác nhau kỳ vọng được thấy mỗi epoch."""
-    n = draws_per_epoch(dataset)
+    n = len(sampler) if sampler is not None else draws_per_epoch(dataset)   # steps_per_epoch có thể khác
     rows = {}
     if isinstance(sampler, WeightedRandomSampler):
         weights = sampler.weights.double()
@@ -647,8 +736,12 @@ def build_dataloaders(cfg, datasets, collator):
     loaders = {}
     for split, ds in datasets.items():
         is_train = split == "train"
-        sampler = build_train_sampler(ds, num_classes, cfg.data.sampler, cfg.data.get("sampler_power", 1.0),
-                                      cfg.seed) if is_train else None
+        sampler = None
+        if is_train:
+            steps = cfg.train.get("steps_per_epoch")
+            num_samples = steps * cfg.train.batch_size * cfg.train.grad_accum if steps else None
+            sampler = build_train_sampler(ds, num_classes, cfg.data.sampler, cfg.data.get("sampler_power"),
+                                          num_samples, cfg.seed)
         loaders[split] = DataLoader(
             ds,
             batch_size=cfg.train.batch_size if is_train else cfg.train.eval_batch_size,
