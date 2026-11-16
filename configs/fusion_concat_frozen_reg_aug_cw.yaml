@@ -1,0 +1,5 @@
+# Experiment C mục 8.1, cột B5: augmentation như B4 + class weight sqrt_inverse như B1
+# (trọng số lớp tính trên tập train đã có bản augmentation).
+inherit: fusion_concat_frozen_reg_aug.yaml
+loss:
+  class_weight: sqrt_inverse

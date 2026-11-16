@@ -1,0 +1,7 @@
+# Experiment C mục 8.1, cột B4: CE + augmentation caption lớp hiếm (back-translation vi-en-vi, ảnh giữ nguyên).
+# Manifest sinh bằng scripts/augment_captions.py; mỗi mẫu gốc thêm tối đa 1 bản được accept. Mỗi epoch rút
+# đúng số mẫu train gốc như B0 (không tính bản sinh thêm) nên cùng số bước cập nhật.
+inherit: fusion_concat_frozen_reg.yaml
+data:
+  augment:
+    file: augmentation_manifest.jsonl

@@ -43,6 +43,10 @@ IE403/
 │   ├── text_only_frozen_cw.yaml # Tuần 4: text_only_frozen + class weight sqrt_inverse
 │   ├── fusion_concat_frozen_reg.yaml # Tuần 4: concat đóng băng + LayerNorm/projection mỗi nhánh, dropout ảnh, modality dropout
 │   ├── fusion_concat_frozen_reg_cw.yaml # Tuần 4: như trên + class weight sqrt_inverse
+│   ├── fusion_concat_frozen_reg_focal.yaml # Phase 9 B3: focal γ=2, không class weight
+│   ├── fusion_concat_frozen_reg_oversample.yaml # Phase 9 B2: oversampling √ nghịch đảo tần suất
+│   ├── fusion_concat_frozen_reg_aug.yaml # Phase 9 B4: augmentation caption lớp hiếm (back-translation)
+│   ├── fusion_concat_frozen_reg_aug_cw.yaml # Phase 9 B5: augmentation + class weight sqrt_inverse
 │   ├── fusion_multistream_frozen.yaml # Tuần 4: caption, OCR, mô tả VLM mã hoá riêng bằng PhoBERT đóng băng, nối vector
 │   ├── fusion_multistream_clip_frozen.yaml # Tuần 4: như trên + vector CLIP
 │   ├── fusion_multistream_ocr_frozen.yaml # Tuần 4: ablation, caption + OCR
@@ -77,7 +81,7 @@ IE403/
 │       │   ├── preprocessing.py   # word segmentation, chuẩn hóa text, resize/normalize ảnh
 │       │   ├── image_text.py      # ảnh → text: OCR (PaddleOCR + VietOCR) + mô tả ảnh (VLM Vintern), cache JSON
 │       │   ├── rationale.py       # prompt CoT, teacher Qwen2.5-VL, parse JSON, phân nhóm, chấm (κ), gộp rationale_dataset.json
-│       │   └── augmentation.py    # back-translation, image augmentation nhẹ
+│       │   └── augmentation.py    # back-translation, lọc tự động + manifest augmentation, image augmentation nhẹ
 │       │
 │       ├── models/
 │       │   ├── text_encoder.py    # wrapper PhoBERT
@@ -123,6 +127,7 @@ IE403/
 │   ├── embed_rationales.py   # mã hoá reasoning bằng PhoBERT đóng băng → rationale_embeddings.npy
 │   ├── train.py              # entrypoint train: `python train.py --config configs/xxx.yaml`
 │   ├── run_experiments.py    # chạy plan config × seed trên N GPU (dùng gpu_queue), ghi log + status
+│   ├── augment_captions.py   # sinh + lọc caption augmentation lớp hiếm, xuất file duyệt, nạp kết quả duyệt
 │   ├── summarize_results.py  # gộp metrics các seed → bảng trung bình ± độ lệch chuẩn (mặc định chỉ val)
 │   ├── evaluate.py           # entrypoint eval trên test set + xuất confusion matrix
 │   ├── serve_web.py          # web xem dữ liệu, cho từng run suy luận một mẫu để người kiểm tra (mục 7.7)
@@ -140,7 +145,8 @@ IE403/
 │   ├── 04_fusion_concat.ipynb
 │   ├── 05_fusion_cross_attention.ipynb
 │   ├── 06_shortcut_interpretability.ipynb
-│   └── 07_ocr_llm_comparison.ipynb    # ablation OCR/mô tả VLM + so sánh LLM đa modal
+│   ├── 07_ocr_llm_comparison.ipynb    # ablation OCR/mô tả VLM + so sánh LLM đa modal
+│   └── 09_imbalance.ipynb             # Phase 9: B0–B5 xử lý mất cân bằng lớp (Experiment C)
 │
 ├── reports/
 │   ├── results.md            # bảng tổng hợp kết quả mọi thí nghiệm (cập nhật liên tục, cột Môi trường ghi kaggle/server)
