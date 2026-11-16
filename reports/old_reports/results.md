@@ -171,3 +171,9 @@ Bảng này phải nằm cuối file: `scripts/train.py` ghi thêm dòng mới v
 | 2026-11-13 | `empD_C_notags_s42` | `829018e` | server | 0.4049 | nan | 8.8 | plan empirical_phase3 | peak VRAM 1.23 GB |
 | 2026-11-13 | `empE_T_B1_s42` | `829018e` | server | 0.4057 | nan | 1.8 | plan empirical_phase3 | peak VRAM 0.87 GB |
 | 2026-11-13 | `empE_M_B1_s42` | `829018e` | server | 0.4019 | nan | 8.0 | plan empirical_phase3 | peak VRAM 1.24 GB |
+| 2026-11-13 | `emp_c_ce_s42` | `7a04f25` | kaggle | 0.3969 | nan | 30.5 | plan empirical_imbalance_screen | peak VRAM 1.25 GB |
+| 2026-11-13 | `emp_c_cw_s42` | `7a04f25` | kaggle | 0.4141 | nan | 30.0 | plan empirical_imbalance_screen | peak VRAM 1.25 GB |
+| 2026-11-13 | `emp_c_focal_s42` | `7a04f25` | kaggle | 0.3654 | nan | 8.7 | plan empirical_imbalance_screen | peak VRAM 1.25 GB |
+| 2026-11-14 | `emp_c_oversample_s42` | `1e86ff3` | kaggle | 0.4151 | nan | 21.6 | plan empirical_imbalance_screen | peak VRAM 1.25 GB |
+| 2026-11-14 | `emp_c_aug_s42` | `1e86ff3` | kaggle | 0.3702 | nan | 11.9 | plan empirical_imbalance_screen | peak VRAM 1.25 GB |
+| 2026-11-14 | `emp_c_aug_cw_s42` | `1e86ff3` | kaggle | 0.3915 | nan | 10.8 | plan empirical_imbalance_screen | peak VRAM 1.25 GB |

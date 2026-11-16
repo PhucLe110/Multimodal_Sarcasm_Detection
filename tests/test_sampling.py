@@ -21,15 +21,15 @@ class _DS(torch.utils.data.Dataset):
 
 def test_sampling_weights_power():
     labels = [0] * 100 + [1] * 4
-    w = sampling_weights(labels, 0.5)
+    w = sampling_weights(labels, 2, 0.5)
     assert w[0] == pytest.approx(0.1) and w[-1] == pytest.approx(0.5)
     # luỹ thừa 0.5: tổng trọng số lớp tỉ lệ với sqrt(count) -> 10 : 2
     total = Counter()
     for lab, x in zip(labels, w):
         total[lab] += x
     assert total[0] / total[1] == pytest.approx(5.0)
-    assert sampling_weights(labels, 1.0)[0] * 100 == pytest.approx(sampling_weights(labels, 1.0)[-1] * 4)
-    assert set(sampling_weights(labels, 0.0)) == {1.0}
+    assert sampling_weights(labels, 2, 1.0)[0] * 100 == pytest.approx(sampling_weights(labels, 2, 1.0)[-1] * 4)
+    assert set(sampling_weights(labels, 2, 0.0)) == {1.0}
 
 
 def test_build_train_sampler_modes():

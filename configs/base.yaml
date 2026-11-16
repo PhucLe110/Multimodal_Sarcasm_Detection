@@ -46,8 +46,14 @@ data:
     cache_file: text_preprocessed.json  # tên file trong cache_dir; meta.pipeline_key sai thì tự bỏ qua, tạo lại
   image_resize: pad    # pad (letterbox vuông, giữ toàn bộ ảnh) | crop (center-crop của processor, như code cũ)
   image_augment: false # crop 90-100% + chỉnh sáng/tương phản, chỉ khi train
-  sampler: random     # random | weighted (cân bằng lớp, trọng số 1/count) | power (trọng số count^-sampler_power)
-  sampler_power: null # sampler=power: 0.5 = căn bậc hai nghịch tần suất (empirical B2)
+  sampler: random     # random | weighted (oversampling lớp hiếm) | power (như weighted, bắt buộc đặt sampler_power)
+  sampler_power: 1.0  # weighted/power: mẫu lớp c được rút với trọng số n_c^-power; 1 = các lớp ngang nhau, 0.5 = căn bậc hai nghịch đảo (B2)
+  # Augmentation caption lớp hiếm (scripts/augment_captions.py): mỗi mẫu gốc thêm tối đa 1 bản đã duyệt, chỉ vào train
+  augment:
+    file: null             # manifest .jsonl, đường dẫn tương đối với paths.cache_dir; null = không augmentation
+    require_review: false  # true: chỉ dùng bản người duyệt đã accept; false: dùng kết quả lọc tự động khi chưa duyệt
+  # Augmentation có duyệt tay của nhánh empirical (scripts/augment_minority.py): data.augmentation.manifest = đường dẫn
+  # augmentation_manifest.jsonl, chỉ thêm biến thể của mẫu đang ở train (dataset.apply_augmentation). Mặc định tắt.
   # Tiền xử lý ảnh thành text (tạo trước bằng scripts/extract_image_text.py, xem notebooks/01b):
   # chữ trong ảnh (OCR) + mô tả ảnh (VLM), ghép thành segment thứ 2 của PhoBERT cạnh caption.
   image_text:

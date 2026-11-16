@@ -6,7 +6,7 @@ from datetime import datetime
 from pathlib import Path
 
 from vimmsd.data.dataset import (ViMMSDCollator, build_dataloaders, build_datasets, class_counts,
-                                 stage_preprocessed_cache)
+                                 sampling_summary, stage_preprocessed_cache)
 from vimmsd.models.classifier import MODALITY_NEEDS, build_model
 from vimmsd.training.losses import build_training_loss
 from vimmsd.training.metrics import format_metrics, plot_confusion_matrix
@@ -62,6 +62,10 @@ def main():
     log.info("train %d | val %d | test %d | phân bố lớp train %s",
              len(datasets["train"]), len(datasets["val"]), len(datasets["test"]),
              dict(zip(cfg.data.labels, counts)))
+    sampling = sampling_summary(datasets["train"], cfg.data.labels, loaders["train"].sampler)
+    (output_dir / "sampling.json").write_text(json.dumps(sampling, ensure_ascii=False, indent=2))
+    log.info("rút %d mẫu mỗi epoch | kỳ vọng mỗi lớp %s", sampling["draws_per_epoch"],
+             {c: round(v["draws_per_epoch"]) for c, v in sampling["classes"].items()})
 
     tracker = start_tracking(cfg, commit, output_dir)
     trainer = Trainer(model, build_training_loss(cfg, counts), loaders, cfg, output_dir, tracker=tracker)
