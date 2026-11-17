@@ -1,4 +1,4 @@
-"""Augmentation caption lớp hiếm có duyệt tay (docs/empirical_analysis_plan.md mục 8.2). Ba bước:
+"""Augmentation caption lớp hiếm có duyệt tay (reports/plan/empirical_analysis_plan.md mục 8.2). Ba bước:
 
     VIMMSD_ENV=server python scripts/augment_minority.py generate --config configs/base.yaml
     VIMMSD_ENV=server python scripts/augment_minority.py sheet --reviewers A B

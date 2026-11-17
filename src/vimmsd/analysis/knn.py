@@ -1,4 +1,4 @@
-"""E1: kNN retrieval lúc suy luận (docs/experiment_design.md mục 5.5). Không train lại, bộ nhớ chỉ chứa train."""
+"""E1: kNN retrieval lúc suy luận (reports/plan/experiment_design.md mục 5.5). Không train lại, bộ nhớ chỉ chứa train."""
 import numpy as np
 import torch
 from tqdm import tqdm

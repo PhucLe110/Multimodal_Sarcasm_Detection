@@ -1,4 +1,4 @@
-# Experiment C mục 8.1 (docs/empirical_analysis_plan.md): screening xử lý mất cân bằng lớp trên backbone C
+# Experiment C mục 8.1 (reports/plan/empirical_analysis_plan.md): screening xử lý mất cân bằng lớp trên backbone C
 # (fusion_concat_frozen_reg): B0 CE / B1 CE + class weight sqrt_inverse / B2 oversampling √ nghịch đảo tần suất /
 # B3 focal γ=2 (không class weight) / B4 augmentation caption lớp hiếm / B5 augmentation + class weight.
 # B4/B5 cần manifest augmentation trong paths.cache_dir: chạy scripts/augment_captions.py trước (notebook 09).

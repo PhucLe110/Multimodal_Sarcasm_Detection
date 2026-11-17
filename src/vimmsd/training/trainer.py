@@ -84,7 +84,7 @@ class Trainer:
         self.best_f1 = -1.0
         self.bad_epochs = 0
         self.history = []
-        # độ phủ dữ liệu (docs/empirical_analysis_plan.md mục 8.1): mẫu đã rút, bước tối ưu, id và mẫu gốc khác nhau
+        # độ phủ dữ liệu (reports/plan/empirical_analysis_plan.md mục 8.1): mẫu đã rút, bước tối ưu, id và mẫu gốc khác nhau
         records = getattr(getattr(loaders["train"], "dataset", None), "records", None) or []
         self._parent_of = {r["id"]: r.get("parent_id", r["id"]) for r in records}
         self.exposure = {"draws": 0, "updates": 0}

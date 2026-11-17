@@ -35,7 +35,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", required=True)
     parser.add_argument("--override", nargs="*", default=[], help='ví dụ: train.epochs=3 loss.name=focal')
-    parser.add_argument("--note", default="", help="ghi chú thêm vào reports/results.md")
+    parser.add_argument("--note", default="", help="ghi chú thêm vào reports/results/results.md")
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -81,7 +81,7 @@ def main():
         log.info("trọng số feature: %s", aux_note)
     test_metrics = None
     # train.eval_test: false (các config CoT distillation): không chấm private test sau mỗi run, chỉ chấm một lần
-    # ở bước cuối bằng run_experiments.py --extra-eval test (docs/experiment_plan.md giai đoạn 6)
+    # ở bước cuối bằng run_experiments.py --extra-eval test (reports/plan/experiment_plan.md giai đoạn 6)
     if cfg.train.get("eval_test", True):
         test_metrics, _ = trainer.evaluate("test")
         log.info("test (best checkpoint)\n%s", format_metrics(test_metrics))
@@ -103,11 +103,11 @@ def main():
     row = (f"| {datetime.now():%Y-%m-%d} | `{cfg.name}` | `{commit}` | {cfg.env} | "
            f"{summary['best_val_macro_f1']:.4f} | {test_metrics['macro_f1'] if test_metrics else float('nan'):.4f} | "
            f"{summary['train_minutes']:.1f} | {note} |")
-    # trên Kaggle/Colab repo là bản clone tạm, nên ghi thêm vào output_dir để copy dòng này về reports/results.md
+    # trên Kaggle/Colab repo là bản clone tạm, nên ghi thêm vào output_dir để copy dòng này về reports/results/results.md
     append_result(output_dir / "results_row.md", row)
-    if cfg.env in ("local", "server"):  # repo là bản clone lâu dài, ghi thẳng vào reports/results.md
-        append_result(find_project_root(args.config) / "reports" / "results.md", row)
-    print("\nDòng kết quả cho reports/results.md:\n" + row)
+    if cfg.env in ("local", "server"):  # repo là bản clone lâu dài, ghi thẳng vào reports/results/results.md
+        append_result(find_project_root(args.config) / "reports" / "results" / "results.md", row)
+    print("\nDòng kết quả cho reports/results/results.md:\n" + row)
 
 
 if __name__ == "__main__":

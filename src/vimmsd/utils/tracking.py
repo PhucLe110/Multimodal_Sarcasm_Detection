@@ -1,7 +1,7 @@
 """Theo dõi run bằng wandb (bật bằng wandb.enabled trong config, mặc định tắt).
 
 Tracking chỉ là phần phụ: thiếu thư viện, không có mạng hay lỗi từ wandb đều chỉ ghi cảnh báo, không làm dừng train.
-Kết quả chính vẫn nằm ở output_dir và reports/results.md."""
+Kết quả chính vẫn nằm ở output_dir và reports/results/results.md."""
 import logging
 import re
 from pathlib import Path

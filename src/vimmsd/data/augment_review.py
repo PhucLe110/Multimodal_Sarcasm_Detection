@@ -1,4 +1,4 @@
-"""Augmentation caption lớp hiếm có duyệt tay (docs/empirical_analysis_plan.md mục 8.2), scripts/augment_minority.py.
+"""Augmentation caption lớp hiếm có duyệt tay (reports/plan/empirical_analysis_plan.md mục 8.2), scripts/augment_minority.py.
 
 Luồng: generate (back-translation, tối đa 2 ứng viên mỗi mẫu gốc) -> lọc tự động (rỗng, không đổi, trùng caption train)
 -> sheet cho từng người duyệt (thấy nhãn gốc và ảnh, không thấy kết quả model) -> import: chỉ nhận ứng viên cả hai người

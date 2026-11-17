@@ -1,4 +1,4 @@
-"""Reasoning của teacher cho CoT distillation (docs/experiment_design.md mục 3-4).
+"""Reasoning của teacher cho CoT distillation (reports/plan/experiment_design.md mục 3-4).
 
 Luồng dữ liệu, mỗi bước một script:
     make_id_lists.py         -> rationales/ids/*.txt
@@ -23,8 +23,8 @@ LABELS = ("not-sarcasm", "text-sarcasm", "image-sarcasm", "multi-sarcasm")
 RUBRIC = ("c1_text", "c2_image", "c3_combined", "c4_conclusion")
 PASS_REVIEWS = ("pass", "auto")  # auto = nhóm 1 không nằm trong mẫu kiểm tra ngẫu nhiên
 
-# Định nghĩa chính thức (docs/annotation_guideline.md, nguyên văn slide 2-3) và quy tắc suy ra từ dữ liệu
-# (docs/annotation_guideline_full.md mục 1, 3-8).
+# Định nghĩa chính thức (reports/guides/annotation_guideline.md, nguyên văn slide 2-3) và quy tắc suy ra từ dữ liệu
+# (reports/guides/annotation_guideline_full.md mục 1, 3-8).
 LABEL_DEFINITIONS = """Official definition of the dataset authors:
 - Sarcasm is any sample that: employs irony by saying the opposite of what is meant, especially to mock or deride; contains a mismatch between the text and the image that suggests sarcasm through contradiction or exaggeration; uses hyperbole to overstate or understate reality in a way that is clearly not meant to be taken literally; incorporates sarcastic hashtags, emojis, or punctuation, which are commonly used to convey sarcasm online.
 - Not sarcasm is any sample that: conveys sentiments or statements that are straightforward and meant to be taken at face value; aligns directly with the image, supporting the literal interpretation of the text; does NOT contain linguistic or visual cues typically associated with sarcasm.
@@ -41,7 +41,7 @@ Rules:
 - Sarcasm needs a target being mocked (a person, a group, a product, an event) or a meaning said backwards. Reporting an ironic event in a neutral way is not sarcasm.
 - When unsure between text-sarcasm and multi-sarcasm, prefer multi-sarcasm: it is about 55 times more common."""
 
-# Mẫu thật trong train (docs/annotation_guideline_full.md), không thuộc pilot_eval, natural_dev; phần Output viết tay
+# Mẫu thật trong train (reports/guides/annotation_guideline_full.md), không thuộc pilot_eval, natural_dev; phần Output viết tay
 # theo nhãn gốc. Không có ảnh đính kèm nên mỗi ví dụ mô tả ảnh bằng chữ. Các mẫu này không được đưa vào sinh
 # reasoning (DATASET_EXAMPLE_IDS); giữ cả mẫu ví dụ của v5-v8 để các lần chạy cũ và mới cùng tập mẫu.
 DATASET_EXAMPLE_IDS = {"573", "7701", "1795", "424", "8262", "2255", "4329", "4117", "3984", "9459", "8562"}

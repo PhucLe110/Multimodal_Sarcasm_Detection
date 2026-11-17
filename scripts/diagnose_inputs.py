@@ -1,4 +1,4 @@
-"""Experiment B (docs/empirical_analysis_plan.md mục 7): thay hoặc bỏ từng nguồn input trên val, không train lại.
+"""Experiment B (reports/plan/empirical_analysis_plan.md mục 7): thay hoặc bỏ từng nguồn input trên val, không train lại.
 
     VIMMSD_ENV=server python scripts/diagnose_inputs.py --runs empA_C_s42 empA_M_s42 [--policy random] [--n-perm 5]
 

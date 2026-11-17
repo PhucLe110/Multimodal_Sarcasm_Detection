@@ -1,4 +1,4 @@
-"""Experiment D, phần suy luận (docs/empirical_analysis_plan.md mục 9): sửa caption val, không train lại.
+"""Experiment D, phần suy luận (reports/plan/empirical_analysis_plan.md mục 9): sửa caption val, không train lại.
 
     VIMMSD_ENV=server python scripts/diagnose_cues.py --runs empA_T_s1 empA_C_s1 empA_M_s1 ...
 

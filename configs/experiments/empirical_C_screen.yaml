@@ -1,4 +1,4 @@
-# Empirical study, Experiment C screening (docs/empirical_analysis_plan.md mục 8.1): C × 3 fold nội bộ có nhóm × seed 42.
+# Empirical study, Experiment C screening (reports/plan/empirical_analysis_plan.md mục 8.1): C × 3 fold nội bộ có nhóm × seed 42.
 #   VIMMSD_ENV=server python scripts/run_experiments.py --plan configs/experiments/empirical_C_screen.yaml --gpu-ids 0
 # Fold: data/processed/empirical/splits/folds_k3_s42.json (scripts/build_empirical_splits.py); val = fold giữ lại của train,
 # chọn checkpoint theo macro-F1 bốn lớp của fold đó (mục 4.3). Public/private test không dùng.

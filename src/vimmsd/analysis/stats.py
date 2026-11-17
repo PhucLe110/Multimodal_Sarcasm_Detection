@@ -1,4 +1,4 @@
-"""Thống kê cho nghiên cứu thực nghiệm (docs/empirical_analysis_plan.md mục 11), scripts/empirical_stats.py.
+"""Thống kê cho nghiên cứu thực nghiệm (reports/plan/empirical_analysis_plan.md mục 11), scripts/empirical_stats.py.
 
 - Bootstrap ghép cặp: lấy lại mẫu đánh giá có hoàn lại, dùng CÙNG chỉ số cho cả hai model (và mọi seed), tính hiệu
   macro-F1. Khoảng tin cậy chỉ phản ánh biến động do mẫu đánh giá, không phản ánh ngẫu nhiên khi train.

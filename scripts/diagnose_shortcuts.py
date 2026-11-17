@@ -1,4 +1,4 @@
-"""D1: kiểm tra shortcut trên val cho các run đã train (docs/experiment_design.md mục 6.6). Không train lại.
+"""D1: kiểm tra shortcut trên val cho các run đã train (reports/plan/experiment_design.md mục 6.6). Không train lại.
 
     python scripts/diagnose_shortcuts.py --runs distill_flat_a_s42 distill_flat_a_s1 distill_flat_a_s2
 

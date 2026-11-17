@@ -32,7 +32,7 @@ INSTRUCTIONS = """HƯỚNG DẪN VIẾT GIẢI THÍCH
 
 Mục đích: giải thích vì sao bài đăng có nhãn đã cho, để dạy model nhỏ cách suy luận. Nhãn đã có sẵn, KHÔNG gán lại nhãn.
 
-Các bước cho mỗi dòng (xem định nghĩa trong docs/labeling_guidelines.md):
+Các bước cho mỗi dòng (xem định nghĩa trong reports/guides/labeling_guidelines.md):
 1. Xem ảnh (bấm vào thư mục images/, tên file bắt đầu bằng STT để phóng to) và đọc caption, chữ trong ảnh.
 2. Cột "Caption riêng có mỉa mai?": chỉ đọc caption, che ảnh đi. Có nói ngược, phóng đại, châm biếm không?
 3. Cột "Ảnh riêng có mỉa mai?": chỉ xem ảnh (kể cả chữ trong ảnh), bỏ qua caption.

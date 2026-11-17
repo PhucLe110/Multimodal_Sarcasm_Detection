@@ -23,9 +23,6 @@ IE403/
 ├── README.md              # Mô tả dự án, bài toán, input/output
 ├── PLAN.md                 # Kế hoạch 8 tuần
 ├── CODEBASE.md             # (tài liệu này)
-├── docs/
-│   ├── experiment_design.md  # thiết kế thí nghiệm: CoT distillation (M1, M2, M3), baseline, kNN, pretrain, chẩn đoán
-│   └── experiment_plan.md    # kế hoạch chạy các thí nghiệm trên GPU server
 ├── pyproject.toml          # khai báo package `vimmsd` để `pip install -e .`
 ├── requirements.txt        # Thư viện đầy đủ (chạy local)
 ├── requirements-kaggle.txt # Chỉ các thư viện Kaggle/Colab chưa có sẵn
@@ -56,7 +53,7 @@ IE403/
 │   ├── fusion_cross_attn_i2t.yaml # Tuần 5: ảnh attend vào text
 │   ├── fusion_cross_attn_focal.yaml # Tuần 5 (+ xử lý imbalance)
 │   ├── distill_base.yaml           # backbone chung cho CoT distillation (multistream_clip đóng băng)
-│   ├── distill_flat_{a,b,c,d}.yaml # M1 (= d) và các cột ablation, xem docs/experiment_design.md mục 6.2; *_d_nogroup3 bỏ nhóm 3
+│   ├── distill_flat_{a,b,c,d}.yaml # M1 (= d) và các cột ablation, xem reports/plan/experiment_design.md mục 6.2; *_d_nogroup3 bỏ nhóm 3
 │   ├── distill_hier_{a,b,c,d}.yaml # M2 (= d) và các cột ablation; *_d_nogroup3 bỏ nhóm 3
 │   ├── hier_cascade.yaml           # kiểu pipeline phân cấp nối tiếp của Vu et al. (định tuyến cứng), để đối chiếu
 │   └── experiments/                # plan config × seed cho run_experiments.py (mục 7.3)
@@ -149,7 +146,14 @@ IE403/
 │   └── 09_imbalance.ipynb             # Phase 9: B0–B5 xử lý mất cân bằng lớp (Experiment C)
 │
 ├── reports/
-│   ├── results.md            # bảng tổng hợp kết quả mọi thí nghiệm (cập nhật liên tục, cột Môi trường ghi kaggle/server)
+│   ├── report_main.md        # file định hướng: danh sách report bắt buộc theo phase
+│   ├── main/                 # các report chính theo report_main.md (1_1 … 14_1)
+│   ├── plan/                 # kế hoạch, thiết kế: empirical_analysis_plan, experiment_design/plan (CoT), paper plan
+│   ├── results/              # log và báo cáo gốc: results.md (mọi run, cột Môi trường kaggle/server),
+│   │                         #   experiment_report.md (sinh tự động), empirical_phase*, dataset_report...
+│   ├── guides/               # hướng dẫn gán nhãn (chính thức + suy ra từ dữ liệu), duyệt augmentation, cài môi trường;
+│   │                         #   prompts/ gitignored
+│   ├── word/                 # report .docx của các thành viên (gitignored)
 │   ├── literature_review/    # review tài liệu; papers/ (PDF) gitignored
 │   └── figures/               # hình ảnh xuất ra cho báo cáo (attention map, confusion matrix...)
 │
@@ -172,7 +176,7 @@ IE403/
 | `analysis/shortcut_check.py` | Tuần 6 | Swap ảnh giữa các mẫu, đo % thay đổi dự đoán |
 | `analysis/interpretability.py` | Tuần 6 | Grad-CAM trên ảnh, attention weight trên text |
 | `analysis/llm_compare.py` | Tuần 7 | Prompt Vintern/LLM đa modal, so sánh với model fine-tune |
-| `data/rationale.py`, `scripts/generate_rationales.py`, `scripts/build_rationale_dataset.py`, `scripts/embed_rationales.py` | CoT distillation | Sinh, lọc, đóng gói reasoning của teacher. Chỉ chạy trên GPU server (`docs/experiment_plan.md`) |
+| `data/rationale.py`, `scripts/generate_rationales.py`, `scripts/build_rationale_dataset.py`, `scripts/embed_rationales.py` | CoT distillation | Sinh, lọc, đóng gói reasoning của teacher. Chỉ chạy trên GPU server (`reports/plan/experiment_plan.md`) |
 | `scripts/run_experiments.py`, `scripts/summarize_results.py` | CoT distillation | Thay cho cell chạy nhiều run trong notebook 04: chạy ma trận config × seed trên N GPU và tổng hợp kết quả |
 
 ---
@@ -200,7 +204,7 @@ IE403/
   - **Kaggle**: lưu vào `/kaggle/working/outputs/`. Chỉ được giữ lại khi chạy bằng *Save Version → Save & Run All*. Muốn resume thì attach output của version trước làm input của notebook, rồi trỏ `resume_from` vào đó.
   - **Colab**: lưu thẳng lên Google Drive.
   - **GPU server**: lưu vào `data/server/outputs/<tên thí nghiệm>/` (symlink ra ổ dữ liệu). Không bị ngắt session nên chỉ cần `resume_from` khi tự dừng.
-- **Kết quả thí nghiệm**: mỗi lần train xong, ghi 1 dòng vào `reports/results.md` (config dùng, **commit hash** của code, môi trường, macro-F1, thời gian train) để cả nhóm theo dõi tiến độ chung mà không cần hỏi nhau qua chat. Commit hash giúp tái lặp đúng kết quả, vì notebook luôn clone code mới nhất.
+- **Kết quả thí nghiệm**: mỗi lần train xong, ghi 1 dòng vào `reports/results/results.md` (config dùng, **commit hash** của code, môi trường, macro-F1, thời gian train) để cả nhóm theo dõi tiến độ chung mà không cần hỏi nhau qua chat. Commit hash giúp tái lặp đúng kết quả, vì notebook luôn clone code mới nhất.
 - **Theo dõi bằng wandb** (tuỳ chọn, mặc định tắt): log loss, loss thành phần, learning rate của head và metric val mỗi epoch; các seed của một config vào chung một group. Private test chỉ ghi vào summary. Không upload checkpoint, ảnh hay caption.
   - **Đăng nhập**: server dùng `wandb login`; Kaggle thêm secret `WANDB_API_KEY` rồi gán vào `os.environ`. Không có mạng thì đặt `WANDB_MODE=offline`, sau đó chạy `wandb sync`.
   - **Chạy**: `python scripts/train.py --config <config> --override wandb.enabled=true`, hoặc `python scripts/run_experiments.py --plan <plan> --wandb`. Team: thêm `wandb.entity=<tên team>`, hoặc đặt biến `WANDB_ENTITY`.
@@ -310,13 +314,13 @@ python scripts/train.py --config configs/fusion_cross_attn.yaml \
 
 1. Sửa code trong `src/` trên máy local → commit → push lên branch của mình.
 2. Trên Kaggle, đặt `REF` = tên branch đó, *Run All*. Notebook tự clone code mới nhất, không cần upload lại gì.
-3. Train chính thức thì đặt `REF` = commit hash cụ thể và ghi hash vào `reports/results.md`.
+3. Train chính thức thì đặt `REF` = commit hash cụ thể và ghi hash vào `reports/results/results.md`.
 
 ---
 
 ## 7. Chạy trên GPU server (chỉ `.py`)
 
-Dùng cho người có quyền vào GPU server riêng; hiện là task CoT distillation (`docs/experiment_plan.md`). Không dùng notebook: mọi bước đều là script trong `scripts/`, chạy trong `tmux` để không mất tiến trình khi ngắt SSH. Các thành viên khác vẫn chạy Kaggle như mục 6. Hai bên dùng chung code (git) và chung cache (Kaggle dataset).
+Dùng cho người có quyền vào GPU server riêng; hiện là task CoT distillation (`reports/plan/experiment_plan.md`). Không dùng notebook: mọi bước đều là script trong `scripts/`, chạy trong `tmux` để không mất tiến trình khi ngắt SSH. Các thành viên khác vẫn chạy Kaggle như mục 6. Hai bên dùng chung code (git) và chung cache (Kaggle dataset).
 
 ### 7.1. Cài đặt một lần
 
@@ -359,7 +363,7 @@ paths:
 ├── vimmsd_cache/
 │   ├── text_preprocessed.json
 │   ├── ocr.json, description.json, image_preprocessed.json/.csv
-│   └── rationales/              # CoT distillation (docs/experiment_plan.md)
+│   └── rationales/              # CoT distillation (reports/plan/experiment_plan.md)
 │       ├── ids/*.txt                         # danh sách id tập thử và các lô
 │       ├── raw/<prompt_version>/*.jsonl      # output teacher, chia shard
 │       ├── review/<batch>.csv                # file chấm rubric
@@ -423,7 +427,7 @@ Script chạy lại được: bước nào đã có kết quả thì bỏ qua. L
 
 ### 7.5. CoT distillation trên server
 
-Thứ tự và cổng quyết định theo `docs/experiment_plan.md`; lệnh đầy đủ có trong docstring đầu mỗi script. `<R>` là `data/server/cache/rationales`.
+Thứ tự và cổng quyết định theo `reports/plan/experiment_plan.md`; lệnh đầy đủ có trong docstring đầu mỗi script. `<R>` là `data/server/cache/rationales`.
 
 | Giai đoạn | Lệnh chính |
 |---|---|
@@ -445,7 +449,7 @@ Thứ tự và cổng quyết định theo `docs/experiment_plan.md`; lệnh đ�
   kaggle datasets version -p /data/<user>/vimmsd_cache/<thư mục upload> -m "<model/prompt version, commit>"
   ```
   Thành viên chạy Kaggle chỉ cần *Add Input* dataset đó.
-- **Kết quả**: với `VIMMSD_ENV=server`, `train.py` ghi thẳng vào `reports/results.md` với cột môi trường là `server`. Thêm loại GPU vào ghi chú (`--note` hoặc dòng plan), vì thời gian train không so được với Kaggle T4.
+- **Kết quả**: với `VIMMSD_ENV=server`, `train.py` ghi thẳng vào `reports/results/results.md` với cột môi trường là `server`. Thêm loại GPU vào ghi chú (`--note` hoặc dòng plan), vì thời gian train không so được với Kaggle T4.
 
 ### 7.7. Web xem dữ liệu và thử model
 
@@ -536,4 +540,4 @@ Khung code ở mục 2 đã có đủ (trừ `PLAN.md`). Việc cần làm để
 3. Xử lý các điểm "CHÚ Ý" trong bảng tổng kết của notebook (tiền xử lý caption, cách chia val/test).
 4. Chạy `notebooks/00_template.ipynb` trên Kaggle để chắc chắn clone + import `vimmsd` + đọc dữ liệu hoạt động, rồi chạy `01_eda.ipynb` và `01b_image_text_extraction.ipynb` (tạo cache OCR + mô tả VLM, cần GPU).
 5. Sau đó các thành viên làm song song theo notebook 02–07, chỉnh hyperparameter qua config/`--override`, sửa code trong `src/` qua PR.
-6. GPU server (CoT distillation): code cho M1, M2 đã có (mục 2, mục 7.5), M3 và các hướng mở rộng thì chưa (`docs/experiment_plan.md`); việc còn lại là chạy theo `docs/experiment_plan.md` → `build_rationale_dataset.py` → `embed_rationales.py`.
+6. GPU server (CoT distillation): code cho M1, M2 đã có (mục 2, mục 7.5), M3 và các hướng mở rộng thì chưa (`reports/plan/experiment_plan.md`); việc còn lại là chạy theo `reports/plan/experiment_plan.md` → `build_rationale_dataset.py` → `embed_rationales.py`.

@@ -76,8 +76,8 @@ def test_notes_and_kaggle_rows_are_rendered(tmp_path):
 
 
 def test_kaggle_rows_read_results_file(tmp_path):
-    (tmp_path / "reports").mkdir()
-    (tmp_path / "reports" / "results.md").write_text(
+    (tmp_path / "reports" / "results").mkdir(parents=True)
+    (tmp_path / "reports" / "results" / "results.md").write_text(
         "| 2026-10-30 | `a` | `c1` | kaggle | 0.3 | 0.4 | 8 | Task \\| note |\n| 2026-10-30 | `b` | `c1` | server | 0.3 | nan | 8 | y |\n",
         encoding="utf-8")
     rows = er.kaggle_rows(tmp_path)

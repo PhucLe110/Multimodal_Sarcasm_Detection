@@ -432,7 +432,7 @@ def load_all_records(cfg):
     if fold.get("manifest"):
         if cfg.train.get("eval_test", True):
             raise ValueError("data.fold.manifest là chế độ phát triển nội bộ: đặt train.eval_test=false "
-                             "(docs/empirical_analysis_plan.md mục 4.3)")
+                             "(reports/plan/empirical_analysis_plan.md mục 4.3)")
         manifest = json.loads(Path(fold["manifest"]).read_text(encoding="utf-8"))
         from vimmsd.data.splits import file_sha256
 
@@ -662,7 +662,7 @@ class EpochBudgetSampler(Sampler):
 
 def draws_per_epoch(dataset):
     """Số mẫu rút mỗi epoch: bằng số mẫu train gốc (không tính bản augmentation), để mọi kỹ thuật cân bằng lớp
-    có cùng số bước cập nhật mỗi epoch như CE thường (docs/empirical_analysis_plan.md mục 8.1).
+    có cùng số bước cập nhật mỗi epoch như CE thường (reports/plan/empirical_analysis_plan.md mục 8.1).
     Dataset không có `records` (vd dataset giả trong test) thì coi mọi mẫu là mẫu gốc."""
     records = getattr(dataset, "records", None)
     if records is None:

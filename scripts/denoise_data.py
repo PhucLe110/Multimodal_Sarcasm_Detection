@@ -243,7 +243,7 @@ def verify_clean(cfg, src, out, labels):
 # ---------------------------------------------------------------- báo cáo
 
 def dataset_report_check(train, splits, md5):
-    """Tính lại số liệu trùng lặp trong reports/dataset_report.md mục 5–6 trên dữ liệu gốc."""
+    """Tính lại số liệu trùng lặp trong reports/results/dataset_report.md mục 5–6 trên dữ liệu gốc."""
     out = {}
     for name, key in (("raw caption", lambda c: c), ("normalized caption", D.normalize_caption)):
         groups = D.group_by_key({k: key(r["caption"]) for k, r in train.items()})
@@ -289,7 +289,7 @@ def write_summary(path, df, labels, n_orig, clean_train, check, manifest):
               f"- Luật drop_mislabel {'được áp dụng' if s3['drop_rule_applied'] else '**không áp dụng** (macro-F1 dưới ngưỡng)'}"
               f" (ngưỡng macro-F1 {manifest['params']['min_oof_macro_f1']}). cleanlab gắn cờ {s3['cleanlab_issues']} mẫu; "
               f"{s3['drop_candidates']} mẫu đủ điều kiện drop, trần {s3['max_drop']} (5% train gốc), cắt {s3['capped']}.",
-              "", "## Đối chiếu với `reports/dataset_report.md`", "",
+              "", "## Đối chiếu với `reports/results/dataset_report.md`", "",
               "| số liệu | báo cáo | tính lại (caption gốc) | tính lại (caption chuẩn hoá) |", "|---|---|---|---|"]
     raw_c, norm_c, m = check["raw caption"], check["normalized caption"], check["md5"]
     lines += [f"| mẫu train trùng caption | 2.860 | {raw_c['samples']} | {norm_c['samples']} |",

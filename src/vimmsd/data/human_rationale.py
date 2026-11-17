@@ -1,7 +1,7 @@
-"""Giải thích do người viết, thay cho teacher LLM (reports/experiment_report.md mục 7).
+"""Giải thích do người viết, thay cho teacher LLM (reports/results/experiment_report.md mục 7).
 
 make_explanation_sheet.py chọn mẫu train và xuất sheet Excel; người viết điền 3 cờ (caption riêng, ảnh riêng, khi
-ghép) và 3 lý do tiếng Việt. Các cờ suy ra nhãn theo bảng quyết định của docs/labeling_guidelines.md mục 3."""
+ghép) và 3 lý do tiếng Việt. Các cờ suy ra nhãn theo bảng quyết định của reports/guides/labeling_guidelines.md mục 3."""
 import random
 from collections import defaultdict
 
@@ -24,7 +24,7 @@ def label_from_flags(caption, image, combined):
 
 
 def multi_case(caption, image, combined):
-    """Trường hợp 1–4 của multi-sarcasm (docs/experiment_design.md mục 1): 1 cả hai, 2 chỉ caption, 3 chỉ ảnh,
+    """Trường hợp 1–4 của multi-sarcasm (reports/plan/experiment_design.md mục 1): 1 cả hai, 2 chỉ caption, 3 chỉ ảnh,
     4 không bên nào, ý mỉa mai chỉ có khi ghép. None nếu không phải multi."""
     if label_from_flags(caption, image, combined) != "multi-sarcasm":
         return None

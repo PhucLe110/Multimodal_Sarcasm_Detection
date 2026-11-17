@@ -39,4 +39,6 @@ cache_file/
 output/
 
 # local prompts for the GPU server, copy-paste only
-docs/prompts/
+reports/guides/prompts/
+
+reports/word

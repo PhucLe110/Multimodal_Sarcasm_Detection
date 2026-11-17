@@ -3,7 +3,7 @@
     python scripts/augment_captions.py --config configs/fusion_concat_frozen_reg_aug.yaml
     python scripts/augment_captions.py --config ... --import-review augmentation_review.csv   # nạp kết quả người duyệt
 
-Chỉ dùng caption của tập train, ảnh giữ nguyên (docs/empirical_analysis_plan.md mục 8.2): mỗi mẫu gốc sinh
+Chỉ dùng caption của tập train, ảnh giữ nguyên (reports/plan/empirical_analysis_plan.md mục 8.2): mỗi mẫu gốc sinh
 --candidates bản, train dùng tối đa 1 bản được accept. Manifest ghi ở data.augment.file (tương đối với
 paths.cache_dir), file review .csv cạnh manifest: điền cột review = accept | reject rồi --import-review.
 Chạy xong caption mới được tiền xử lý sẵn vào cache text, để các run train song song không cùng ghi cache."""

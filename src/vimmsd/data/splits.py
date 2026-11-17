@@ -1,4 +1,4 @@
-"""Fold nội bộ có nhóm cho nghiên cứu thực nghiệm (docs/empirical_analysis_plan.md mục 4.2), scripts/build_empirical_splits.py.
+"""Fold nội bộ có nhóm cho nghiên cứu thực nghiệm (reports/plan/empirical_analysis_plan.md mục 4.2), scripts/build_empirical_splits.py.
 
 Nhóm = các mẫu train nối với nhau bởi caption chuẩn hoá trùng khớp HOẶC ảnh trùng md5, bắc cầu (union-find).
 Fold = StratifiedGroupKFold theo nhãn trên nhóm, seed cố định. Validator kiểm tra: mỗi id đúng một fold, không nhóm nào
