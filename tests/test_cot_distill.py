@@ -1,4 +1,4 @@
-"""Test CoT distillation + head phân cấp (docs/experiment_design.md). Không cần GPU, mạng, model thật."""
+"""Test CoT distillation + head phân cấp (reports/plan/experiment_design.md). Không cần GPU, mạng, model thật."""
 import json
 import math
 

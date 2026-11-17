@@ -1,4 +1,4 @@
-"""E1: kNN retrieval trên val cho các run đã train (docs/experiment_design.md mục 5.5, docs/experiment_plan.md).
+"""E1: kNN retrieval trên val cho các run đã train (reports/plan/experiment_design.md mục 5.5, reports/plan/experiment_plan.md).
 
     python scripts/knn_eval.py --runs distill_flat_a_s42 distill_flat_a_s1 distill_flat_a_s2
 

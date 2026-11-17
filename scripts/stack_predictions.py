@@ -1,4 +1,4 @@
-"""B2: dự đoán out-of-fold của các model T, I, M rồi gộp bằng logistic regression (docs/experiment_plan.md 7B).
+"""B2: dự đoán out-of-fold của các model T, I, M rồi gộp bằng logistic regression (reports/plan/experiment_plan.md 7B).
 
     python scripts/stack_predictions.py
 

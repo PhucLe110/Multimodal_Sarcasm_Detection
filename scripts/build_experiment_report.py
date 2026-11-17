@@ -1,4 +1,4 @@
-"""Sinh lại reports/experiment_report.md từ kết quả hiện có (vimmsd/analysis/experiment_report.py).
+"""Sinh lại reports/results/experiment_report.md từ kết quả hiện có (vimmsd/analysis/experiment_report.py).
 
     python scripts/build_experiment_report.py"""
 from vimmsd.analysis.experiment_report import write_report

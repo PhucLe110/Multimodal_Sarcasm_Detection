@@ -1,4 +1,4 @@
-# B2: 3 model riêng + stacking (docs/experiment_plan.md 7B). Mỗi model train 5 lần, mỗi lần giữ lại một fold của train
+# B2: 3 model riêng + stacking (reports/plan/experiment_plan.md 7B). Mỗi model train 5 lần, mỗi lần giữ lại một fold của train
 # để dự đoán out-of-fold, cộng một lần trên toàn bộ train để dự đoán val. 18 run, 1 seed.
 #   python scripts/run_experiments.py --plan configs/experiments/b2_stacking.yaml --gpu-ids 0
 #   python scripts/stack_predictions.py

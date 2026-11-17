@@ -86,7 +86,7 @@ def run_shortcut_check(model, records, collator, labels, device, target_labels=(
 
 def swap_image_views(dataset, perm):
     """Bản sao dataset, mỗi mẫu nhận CÙNG LÚC ảnh, OCR và mô tả của mẫu perm[i], caption giữ nguyên
-    (docs/experiment_design.md mục 6.6). Chỉ đổi ảnh thì model vẫn thấy nội dung ảnh gốc qua OCR và mô tả.
+    (reports/plan/experiment_design.md mục 6.6). Chỉ đổi ảnh thì model vẫn thấy nội dung ảnh gốc qua OCR và mô tả.
     OCR của mẫu cho đã được làm sạch theo caption của chính nó, nên có thể khác chút so với khi ghép với caption mới."""
     swapped = copy.copy(dataset)
     swapped.records = [{**rec, "image_path": dataset.records[j]["image_path"]} for rec, j in zip(dataset.records, perm)]

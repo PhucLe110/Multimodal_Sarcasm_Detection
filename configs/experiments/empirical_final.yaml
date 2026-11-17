@@ -1,4 +1,4 @@
-# Empirical study, Phase 4: final benchmark for the frozen finalists (reports/empirical_phase4_freeze.md).
+# Empirical study, Phase 4: final benchmark for the frozen finalists (reports/results/empirical_phase4_freeze.md).
 # Every run here is already trained; run with --extra-eval test so only evaluate.py --split test runs:
 #   VIMMSD_ENV=server python scripts/run_experiments.py --plan configs/experiments/empirical_final.yaml --gpu-ids 0 --extra-eval test
 # Names and overrides must match empirical_A.yaml / empirical_phase3.yaml exactly; check with --dry-run first.

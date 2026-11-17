@@ -1,4 +1,4 @@
-"""Thống kê cho nghiên cứu thực nghiệm (docs/empirical_analysis_plan.md mục 6, 8.4, 11), đọc <run>/val_predictions.csv.
+"""Thống kê cho nghiên cứu thực nghiệm (reports/plan/empirical_analysis_plan.md mục 6, 8.4, 11), đọc <run>/val_predictions.csv.
 
     # Experiment A: họ so sánh khai báo trước, bootstrap ghép cặp 2.000 lần, Holm trong họ
     python scripts/empirical_stats.py contrasts --family A_modality \\

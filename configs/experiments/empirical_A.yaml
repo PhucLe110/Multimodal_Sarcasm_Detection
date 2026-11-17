@@ -1,5 +1,5 @@
-# Empirical study, Experiment A: modality contributions (docs/empirical_analysis_plan.md mục 6, giao thức ở
-# reports/empirical_phase0.md mục 3). 7 model × 3 seed = 21 run, official split, plain CE, encoder đóng băng.
+# Empirical study, Experiment A: modality contributions (reports/plan/empirical_analysis_plan.md mục 6, giao thức ở
+# reports/results/empirical_phase0.md mục 3). 7 model × 3 seed = 21 run, official split, plain CE, encoder đóng băng.
 #   VIMMSD_ENV=server python scripts/run_experiments.py --plan configs/experiments/empirical_A.yaml --gpu-ids 0
 # Chọn checkpoint theo macro-F1 bỏ text-sarcasm trên val (public test); không chấm private test khi phát triển.
 name: empirical_A

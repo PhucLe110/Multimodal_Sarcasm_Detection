@@ -1,4 +1,4 @@
-# Empirical study, Phase 3 (docs/empirical_analysis_plan.md mục 8.4, 9, 10; reports/empirical_phase2.md mục 5).
+# Empirical study, Phase 3 (reports/plan/empirical_analysis_plan.md mục 8.4, 9, 10; reports/results/empirical_phase2.md mục 5).
 #   VIMMSD_ENV=server python scripts/run_experiments.py --plan configs/experiments/empirical_phase3.yaml --gpu-ids 0
 # Cùng giao thức với empirical_A.yaml; so sánh ghép cặp với các run empA_* cùng seed.
 # - empB1_C: C với treatment đã chọn ở vòng sàng lọc (B1, CE + trọng số lớp căn bậc hai nghịch tần suất), train đầy đủ.

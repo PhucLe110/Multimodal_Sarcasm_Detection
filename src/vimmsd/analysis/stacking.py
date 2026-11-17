@@ -1,4 +1,4 @@
-"""B2: gộp dự đoán của 3 model riêng bằng một classifier nhỏ (docs/experiment_design.md mục 5.6).
+"""B2: gộp dự đoán của 3 model riêng bằng một classifier nhỏ (reports/plan/experiment_design.md mục 5.6).
 
 Classifier gộp chỉ học trên dự đoán out-of-fold của train: dự đoán trên chính dữ liệu model đã học quá tự tin."""
 import numpy as np

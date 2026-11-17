@@ -1,4 +1,4 @@
-# Experiment C mục 8.1 (docs/empirical_analysis_plan.md), cột B3: focal loss γ=2 KHÔNG kèm class weight
+# Experiment C mục 8.1 (reports/plan/empirical_analysis_plan.md), cột B3: focal loss γ=2 KHÔNG kèm class weight
 # (alpha=null), trên backbone C = fusion_concat_frozen_reg. So với B0 (fusion_concat_frozen_reg, CE)
 # và B1 (fusion_concat_frozen_reg_cw, CE + class weight sqrt_inverse) trong cùng plan screening.
 inherit: fusion_concat_frozen_reg.yaml

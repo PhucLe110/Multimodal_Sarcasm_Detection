@@ -1,4 +1,4 @@
-"""Phase 0 của docs/empirical_analysis_plan.md (mục 4.1–4.2): nhóm, fold nội bộ có nhóm, checksum và độ trùng giữa các split.
+"""Phase 0 của reports/plan/empirical_analysis_plan.md (mục 4.1–4.2): nhóm, fold nội bộ có nhóm, checksum và độ trùng giữa các split.
 
     VIMMSD_ENV=server python scripts/build_empirical_splits.py --config configs/base.yaml
     ... --out-dir data/processed/empirical/splits --k 3 --seed 42

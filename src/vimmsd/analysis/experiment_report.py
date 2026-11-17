@@ -1,7 +1,7 @@
-"""Sinh reports/experiment_report.md từ kết quả đã có trên đĩa. Phần chưa có kết quả để trống.
+"""Sinh reports/results/experiment_report.md từ kết quả đã có trên đĩa. Phần chưa có kết quả để trống.
 
-Thiết kế và kế hoạch chép nguyên từ docs/experiment_design.md, docs/experiment_plan.md. Số liệu đọc từ <output_dir>.
-Nhận xét, quyết định ở các cổng và kết quả không sinh ra file (chấm rubric...) lấy từ reports/experiment_report_notes.yaml.
+Thiết kế và kế hoạch chép nguyên từ reports/plan/experiment_design.md, reports/plan/experiment_plan.md. Số liệu đọc từ <output_dir>.
+Nhận xét, quyết định ở các cổng và kết quả không sinh ra file (chấm rubric...) lấy từ reports/results/experiment_report_notes.yaml.
 File được ghi đè mỗi lần chạy, chỉ sửa tay file notes. Script chạy thí nghiệm gọi refresh_report() khi xong."""
 import json
 import logging
@@ -235,9 +235,9 @@ def stacking_section(output_dir):
 
 
 def kaggle_rows(root):
-    """Dòng env kaggle trong reports/results.md của nhánh này và của origin/main (nhóm chạy baseline trên Kaggle)."""
+    """Dòng env kaggle trong reports/results/results.md của nhánh này và của origin/main (nhóm chạy baseline trên Kaggle)."""
     sources = []
-    path = Path(root) / "reports" / "results.md"
+    path = Path(root) / "reports" / "results" / "results.md"
     if path.exists():
         sources.append(path.read_text(encoding="utf-8"))
     done = subprocess.run(["git", "show", "origin/main:reports/results.md"], cwd=root, capture_output=True, text=True)
@@ -318,12 +318,12 @@ def build_report(output_dir, design, plan, notes=None, kaggle=(), image_meta=Non
     doc = [
         "# Báo cáo thí nghiệm: CoT distillation và các hướng liên quan",
         "File này được sinh tự động bởi `vimmsd.analysis.experiment_report`, không sửa tay. Nhận xét và quyết định nằm ở "
-        "`reports/experiment_report_notes.yaml`. Mục chưa có kết quả được để trống. Số liệu trên val dùng để phát triển; "
+        "`reports/results/experiment_report_notes.yaml`. Mục chưa có kết quả được để trống. Số liệu trên val dùng để phát triển; "
         "private test chỉ xuất hiện sau bước đánh giá cuối.",
         section("## 1. Trạng thái các cổng quyết định",
                 table(["Cổng", "Điều kiện", "Kết quả đo được", "Quyết định"], gates)),
-        section("## 2. Thiết kế thí nghiệm", "Chép nguyên từ `docs/experiment_design.md`.", embed_doc(design)),
-        section("## 3. Kế hoạch chạy", "Chép nguyên từ `docs/experiment_plan.md`.", embed_doc(plan)),
+        section("## 2. Thiết kế thí nghiệm", "Chép nguyên từ `reports/plan/experiment_design.md`.", embed_doc(design)),
+        section("## 3. Kế hoạch chạy", "Chép nguyên từ `reports/plan/experiment_plan.md`.", embed_doc(plan)),
         section("## 4. Dữ liệu", table(["Mục", "Giá trị"], data_rows) if data_rows else "", note("data")),
         section("## 5. Giai đoạn 0: baseline và chẩn đoán",
                 section("### 5.1. Baseline của nhóm trên Kaggle",
@@ -373,13 +373,13 @@ def write_report(root=ROOT, output_dir=None):
     root = Path(root)
     output_dir = output_dir or load_config(root / "configs" / "base.yaml").paths.output_dir
     cache_dir = Path(output_dir).parent / "cache"
-    notes_path = root / "reports" / "experiment_report_notes.yaml"
+    notes_path = root / "reports" / "results" / "experiment_report_notes.yaml"
     notes = yaml.safe_load(notes_path.read_text(encoding="utf-8")) if notes_path.exists() else {}
     image = read_json(cache_dir / "image_preprocessed.json") or {}
-    text = build_report(output_dir, (root / "docs" / "experiment_design.md").read_text(encoding="utf-8"),
-                        (root / "docs" / "experiment_plan.md").read_text(encoding="utf-8"), notes,
+    text = build_report(output_dir, (root / "reports" / "plan" / "experiment_design.md").read_text(encoding="utf-8"),
+                        (root / "reports" / "plan" / "experiment_plan.md").read_text(encoding="utf-8"), notes,
                         kaggle_rows(root), image.get("meta"))
-    path = root / "reports" / "experiment_report.md"
+    path = root / "reports" / "results" / "experiment_report.md"
     path.write_text(text, encoding="utf-8")
     return path
 

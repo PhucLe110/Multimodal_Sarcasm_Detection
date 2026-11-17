@@ -1,4 +1,4 @@
-"""Experiment B: mức phụ thuộc của model vào từng nguồn input (docs/empirical_analysis_plan.md mục 7), không train lại.
+"""Experiment B: mức phụ thuộc của model vào từng nguồn input (reports/plan/empirical_analysis_plan.md mục 7), không train lại.
 
 Can thiệp trên CÙNG các mẫu val, caption và id giữ nguyên:
 - pixels: chỉ thay ảnh (OCR, mô tả giữ của mẫu gốc);
