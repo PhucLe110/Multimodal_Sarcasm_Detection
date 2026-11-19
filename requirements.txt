@@ -1,12 +1,16 @@
 torch
 torchvision
 transformers>=4.45
+accelerate           # device_map khi nạp VLM teacher
+bitsandbytes         # generate_rationales.py --load-in-4bit
 py_vncorenlp         # tách từ VnCoreNLP cho PhoBERT (cần Java >= 8)
 underthesea          # tách từ dự phòng (word_segment: underthesea)
 emoji                # xử lý emoji trong caption
 scikit-learn         # metrics
+scipy                # differential evolution cho post-hoc calibration B8
 pyyaml               # đọc config
 pandas
+openpyxl   # sheet viết giải thích (scripts/make_explanation_sheet.py)
 matplotlib
 pillow
 tqdm
@@ -17,4 +21,9 @@ gdown                # cần cho vietocr
 # vietocr (nhận dạng chữ tiếng Việt cho OCR) ghim pillow/einops/gdown bản cũ, nên cài riêng và bỏ qua dependency:
 #   pip install --no-deps vietocr
 kaggle               # download data qua API (chỉ dùng local)
+wandb                # theo dõi run, chỉ dùng khi wandb.enabled=true
+cleanlab             # lọc nhãn nhiễu (scripts/denoise_data.py)
+imagehash            # pHash tìm ảnh gần trùng (scripts/denoise_data.py)
+sentencepiece        # tokenizer của vinai-translate (back-translation, scripts/augment_minority.py)
+flask                # web xem dữ liệu (scripts/serve_web.py)
 pytest

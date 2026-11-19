@@ -10,6 +10,7 @@ from transformers import get_linear_schedule_with_warmup
 
 from vimmsd.training.metrics import compute_metrics, format_metrics
 from vimmsd.utils.checkpoint import load_checkpoint, resolve_resume_path, save_checkpoint
+from vimmsd.utils.tracking import NullTracker, metric_scalars
 
 logger = logging.getLogger(__name__)
 
@@ -52,8 +53,9 @@ class Trainer:
 
     Mỗi epoch lưu `last.pt` (để resume khi session bị ngắt) và `best.pt` theo macro-F1 trên val."""
 
-    def __init__(self, model, loss_fn, loaders, cfg, output_dir):
+    def __init__(self, model, loss_fn, loaders, cfg, output_dir, tracker=None):
         self.model = model
+        self.tracker = tracker or NullTracker()
         self.loss_fn = loss_fn
         self.loaders = loaders
         self.cfg = cfg
@@ -82,6 +84,11 @@ class Trainer:
         self.best_f1 = -1.0
         self.bad_epochs = 0
         self.history = []
+        # độ phủ dữ liệu (reports/plan/empirical_analysis_plan.md mục 8.1): mẫu đã rút, bước tối ưu, id và mẫu gốc khác nhau
+        records = getattr(getattr(loaders["train"], "dataset", None), "records", None) or []
+        self._parent_of = {r["id"]: r.get("parent_id", r["id"]) for r in records}
+        self.exposure = {"draws": 0, "updates": 0}
+        self._seen_ids = set()
 
         resume_path = resolve_resume_path(t.get("resume_from"))
         if resume_path:
@@ -101,10 +108,15 @@ class Trainer:
         pbar = tqdm(loader, desc=f"epoch {epoch + 1}/{self.epochs}", leave=False)
         part_sums = {}
         uses_outputs = getattr(self.loss_fn, "uses_outputs", False)
+        uses_mixup = getattr(self.loss_fn, "uses_mixup", False)
         for step, batch in enumerate(pbar):
             batch = move_to_device(batch, self.device)
             with torch.autocast(self.device.type, dtype=torch.float16, enabled=self.use_amp):
-                out = self.model.forward_outputs(batch) if uses_outputs else self.model(batch)
+                if uses_mixup:
+                    out = self.model.forward_mixup(batch, self.loss_fn.mixup_alpha,
+                                                   self.loss_fn.mixup_minority_labels)
+                else:
+                    out = self.model.forward_outputs(batch) if uses_outputs else self.model(batch)
             if uses_outputs:
                 loss, parts = self.loss_fn(out, batch)
                 for k, v in parts.items():
@@ -120,10 +132,14 @@ class Trainer:
                 self.scaler.update()
                 self.scheduler.step()
                 self.optimizer.zero_grad(set_to_none=True)
+                self.exposure["updates"] += 1
+            self.exposure["draws"] += len(batch["labels"])
+            self._seen_ids.update(batch.get("ids") or [])
 
             total += loss.item() * len(batch["labels"])
             n += len(batch["labels"])
             pbar.set_postfix(loss=f"{total / n:.4f}")
+        self.last_loss_parts = {k: v / max(n, 1) for k, v in part_sums.items()} if len(part_sums) > 1 else {}
         if len(part_sums) > 1:  # chỉ log khi có loss phụ
             logger.info("epoch %d | loss thành phần %s", epoch + 1,
                         " ".join(f"{k}={v / max(n, 1):.4f}" for k, v in part_sums.items()))
@@ -152,7 +168,10 @@ class Trainer:
             metrics, _ = self.evaluate("val")
             score = selection_score(metrics, self.select_metric, self.select_exclude)
             self.history.append({"epoch": epoch, "train_loss": train_loss, "val_macro_f1": metrics["macro_f1"],
-                                 "val_select": score})
+                                 "val_select": score, "val_weighted_f1": metrics["weighted_f1"],
+                                 "val_accuracy": metrics["accuracy"],
+                                 "val_f1": {c: m["f1"] for c, m in metrics["per_class"].items()}})
+            (self.output_dir / "history.json").write_text(json.dumps(self.history, indent=2))
             logger.info("epoch %d | train loss %.4f | val chọn checkpoint (%s) %.4f | val %s", epoch + 1, train_loss,
                         self.select_metric + (f" bỏ {self.select_exclude}" if self.select_exclude else ""), score,
                         format_metrics(metrics))
@@ -168,6 +187,12 @@ class Trainer:
             else:
                 self.bad_epochs += 1
 
+            self.tracker.log({"epoch": epoch + 1, "train/loss": train_loss,
+                              **{f"train/loss_{k}": v for k, v in self.last_loss_parts.items()},
+                              "train/lr_head": self.optimizer.param_groups[0]["lr"],
+                              **metric_scalars(metrics, "val"), "val/select": score, "val/best_select": self.best_f1},
+                             step=epoch + 1)
+
             save_checkpoint(self.output_dir / "last.pt", self.model, self.optimizer, self.scheduler, self.scaler,
                             epoch=epoch, best_f1=self.best_f1, bad_epochs=self.bad_epochs,
                             history=self.history, config=self.cfg.to_dict())
@@ -181,7 +206,12 @@ class Trainer:
         best = getattr(self, "best_val_metrics", None)
         if best is None and (self.output_dir / "best_val_metrics.json").exists():  # resume: best từ lần chạy trước
             best = json.loads((self.output_dir / "best_val_metrics.json").read_text())
+        exposure = {**self.exposure, "unique_ids": len(self._seen_ids),
+                    "unique_parents": len({self._parent_of.get(i, i) for i in self._seen_ids})}
+        logger.info("độ phủ train: %s", exposure)
+        (self.output_dir / "exposure.json").write_text(json.dumps(exposure, indent=2))
         return {"best_val_macro_f1": best["macro_f1"] if best else self.best_f1, "best_val_select": self.best_f1,
+                "exposure": exposure,
                 "train_minutes": (time.time() - start) / 60,
                 "peak_vram_gb": peak_vram_gb, "history": self.history}
 

@@ -46,7 +46,14 @@ data:
     cache_file: text_preprocessed.json  # tên file trong cache_dir; meta.pipeline_key sai thì tự bỏ qua, tạo lại
   image_resize: pad    # pad (letterbox vuông, giữ toàn bộ ảnh) | crop (center-crop của processor, như code cũ)
   image_augment: false # crop 90-100% + chỉnh sáng/tương phản, chỉ khi train
-  sampler: random     # random | weighted (oversampling lớp hiếm)
+  sampler: random     # random | weighted (oversampling lớp hiếm) | power (như weighted, bắt buộc đặt sampler_power)
+  sampler_power: 1.0  # weighted/power: mẫu lớp c được rút với trọng số n_c^-power; 1 = các lớp ngang nhau, 0.5 = căn bậc hai nghịch đảo (B2)
+  # Augmentation caption lớp hiếm (scripts/augment_captions.py): mỗi mẫu gốc thêm tối đa 1 bản đã duyệt, chỉ vào train
+  augment:
+    file: null             # manifest .jsonl, đường dẫn tương đối với paths.cache_dir; null = không augmentation
+    require_review: false  # true: chỉ dùng bản người duyệt đã accept; false: dùng kết quả lọc tự động khi chưa duyệt
+  # Augmentation có duyệt tay của nhánh empirical (scripts/augment_minority.py): data.augmentation.manifest = đường dẫn
+  # augmentation_manifest.jsonl, chỉ thêm biến thể của mẫu đang ở train (dataset.apply_augmentation). Mặc định tắt.
   # Tiền xử lý ảnh thành text (tạo trước bằng scripts/extract_image_text.py, xem notebooks/01b):
   # chữ trong ảnh (OCR) + mô tả ảnh (VLM), ghép thành segment thứ 2 của PhoBERT cạnh caption.
   image_text:
@@ -57,7 +64,7 @@ data:
     # cache trung gian của notebook 01b, mỗi bước một file; đổi model OCR/VLM thì dùng thư mục cache mới
     ocr_cache: ocr.json
     description_cache: description.json
-  # CoT distillation (docs/cot_distillation.md): reasoning của teacher đạt rubric, chỉ gắn vào mẫu train
+  # CoT distillation (reports/plan/experiment_design.md): reasoning của teacher đạt rubric, chỉ gắn vào mẫu train
   rationale:
     use: false
     dir: null                      # null = <paths.cache_dir>/rationales
@@ -86,10 +93,13 @@ model:
   dropout: 0.2
 
 loss:
-  name: ce            # ce | focal
+  name: ce            # ce | focal | logit_adjustment
   class_weight: null  # null | inverse | sqrt_inverse | effective
   gamma: 2.0          # chỉ dùng cho focal
+  tau: 1.0            # hệ số τ của logit adjustment: cộng τ·log(prior) vào logit khi train
   label_smoothing: 0.0
+  mixup_alpha: 0.0    # > 0: Manifold Mixup sau fusion, chỉ flat head + CE, không class weight
+  mixup_minority_labels: [text-sarcasm, image-sarcasm]  # anchor lớp hiếm giữ ít nhất 50% đặc trưng
   lambda_s: 0.0       # hierarchical: BCE thêm cho tầng S (có châm biếm không)
   lambda_axis: 0.0    # BCE của head T/I
   lambda_rat: 0.0     # 1 - cos(phép chiếu vector fusion, embedding reasoning)
@@ -107,10 +117,16 @@ train:
   amp: true
   num_workers: 2
   early_stop_patience: 3
+  steps_per_epoch: null   # số bước tối ưu cố định mỗi epoch (ngân sách so sánh được giữa các cách lấy mẫu/augmentation); null = một lượt tập train
   resume_from: null   # file .pt hoặc thư mục chứa last.pt
   select_metric: macro_f1      # macro_f1 | weighted_f1: điểm val để chọn best.pt và early stopping
   select_exclude_labels: []    # macro_f1 bỏ các lớp này, vd [text-sarcasm] (val chỉ có 1 mẫu)
   eval_test: true              # chấm test (private test) cuối mỗi run; false = chỉ chấm một lần ở bước cuối
+
+wandb:
+  enabled: false   # true: log metric mỗi epoch lên wandb (utils/tracking.py, cần wandb login hoặc WANDB_API_KEY)
+  project: vimmsd
+  entity: null     # tên team trên wandb; null = tài khoản cá nhân
 
 eval:
   prior_correction: false      # evaluate.py ghi thêm kết quả hiệu chỉnh prior theo val (hậu tố _prior)

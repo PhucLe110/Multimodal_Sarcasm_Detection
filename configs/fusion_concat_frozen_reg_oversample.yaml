@@ -1,0 +1,7 @@
+# Experiment C mục 8.1, cột B2: CE + oversampling theo căn bậc hai nghịch đảo tần suất trên backbone C.
+# Mẫu lớp c được rút với trọng số n_c^-0.5 (tỉ lệ lớp trong epoch ∝ √n_c), nhẹ tay hơn cân bằng hẳn các lớp
+# (sampler_power: 1). Mỗi epoch vẫn rút đúng số mẫu train như B0 nên cùng số bước cập nhật.
+inherit: fusion_concat_frozen_reg.yaml
+data:
+  sampler: weighted
+  sampler_power: 0.5
