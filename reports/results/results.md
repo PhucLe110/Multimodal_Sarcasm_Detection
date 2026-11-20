@@ -177,3 +177,21 @@ Bảng này phải nằm cuối file: `scripts/train.py` ghi thêm dòng mới v
 | 2026-11-14 | `emp_c_oversample_s42` | `1e86ff3` | kaggle | 0.4151 | nan | 21.6 | plan empirical_imbalance_screen | peak VRAM 1.25 GB |
 | 2026-11-14 | `emp_c_aug_s42` | `1e86ff3` | kaggle | 0.3702 | nan | 11.9 | plan empirical_imbalance_screen | peak VRAM 1.25 GB |
 | 2026-11-14 | `emp_c_aug_cw_s42` | `1e86ff3` | kaggle | 0.3915 | nan | 10.8 | plan empirical_imbalance_screen | peak VRAM 1.25 GB |
+
+## Phase 11 — Cross-Attention + Imbalance Techniques (3 config × 3 seed)
+
+Encoder đóng băng (PhoBERT + ViT). Chỉ train cross-attention blocks + classification head.
+Kỹ thuật xử lý mất cân bằng: Logit Adjustment (τ=1.0) và Manifold Mixup (α=0.2).
+Hyperparameters chống overfitting: lr_head=5e-4, weight_decay=0.05, dropout=0.3, early_stop_patience=5.
+Commit `3a1b3c7`, platform kaggle, test = private test 1504 mẫu (not:458 / text:7 / image:40 / multi:999).
+
+| 2026-11-20 | `fusion_cross_attn_frozen_s42` | `3a1b3c7` | kaggle | 0.3777 | 0.3812 | 14.4 | Phase 11 fusion_cross_attn_frozen seed 42 \| peak VRAM 1.34 GB |
+| 2026-11-20 | `fusion_cross_attn_frozen_logit_adjustment_s42` | `3a1b3c7` | kaggle | 0.3900 | 0.4236 | 27.5 | Phase 11 fusion_cross_attn_frozen_logit_adjustment seed 42 \| peak VRAM 1.34 GB |
+| 2026-11-20 | `fusion_cross_attn_frozen_mixup_s42` | `3a1b3c7` | kaggle | 0.4150 | 0.3733 | 26.9 | Phase 11 fusion_cross_attn_frozen_mixup seed 42 \| peak VRAM 1.34 GB |
+| 2026-11-20 | `fusion_cross_attn_frozen_s1` | `3a1b3c7` | kaggle | 0.3643 | 0.3761 | 7.9 | Phase 11 fusion_cross_attn_frozen seed 1 \| peak VRAM 1.34 GB |
+| 2026-11-20 | `fusion_cross_attn_frozen_logit_adjustment_s1` | `3a1b3c7` | kaggle | 0.3846 | 0.4273 | 19.9 | Phase 11 fusion_cross_attn_frozen_logit_adjustment seed 1 \| peak VRAM 1.34 GB |
+| 2026-11-20 | `fusion_cross_attn_frozen_mixup_s1` | `3a1b3c7` | kaggle | 0.3916 | 0.3642 | 25.2 | Phase 11 fusion_cross_attn_frozen_mixup seed 1 \| peak VRAM 1.34 GB |
+| 2026-11-20 | `fusion_cross_attn_frozen_s2` | `3a1b3c7` | kaggle | 0.3787 | 0.3605 | 10.0 | Phase 11 fusion_cross_attn_frozen seed 2 \| peak VRAM 1.34 GB |
+| 2026-11-20 | `fusion_cross_attn_frozen_logit_adjustment_s2` | `3a1b3c7` | kaggle | 0.4016 | 0.4071 | 19.8 | Phase 11 fusion_cross_attn_frozen_logit_adjustment seed 2 \| peak VRAM 1.34 GB |
+| 2026-11-20 | `fusion_cross_attn_frozen_mixup_s2` | `3a1b3c7` | kaggle | 0.3883 | 0.3674 | 21.3 | Phase 11 fusion_cross_attn_frozen_mixup seed 2 \| peak VRAM 1.34 GB |
+| 2026-11-20 | `fusion_cross_attn_frozen_logit_adjustment_s42_calibrated` | `3a1b3c7` | kaggle | 0.4006 | 0.4288 | — | Phase 11 CA+LA+PostCalib (seed 42, α=[1.000,0.941,0.683,1.133]) \| peak VRAM 1.34 GB |
