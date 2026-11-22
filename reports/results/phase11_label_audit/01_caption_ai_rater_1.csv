@@ -1,0 +1,63 @@
+﻿audit_id,caption,sarcasm,confidence,evidence
+A010,Để tôi xem mấy ông hay hỏi VOZ sao không thấy đăng bài công nghệ có like comment share gì bài này không 😡,co,2,Thách người hay phàn nàn VOZ thiếu bài công nghệ xem họ có tương tác thật không; hàm ý họ nói một đằng làm một nẻo.
+A011,Cảm ơn chia sẻ của member,khong,2,Lời cảm ơn trực tiếp; caption chưa gợi dấu hiệu nói ngược.
+A025,Ngừ tà zăm :))),khong_chac,1,Cách gọi đùa và dấu cười có thể là trêu chọc; chưa rõ đối tượng hoặc lý do.
+A002,"#VOZ_F33 - Cận cảnh những hồ nước ở Hà Nội nguy cơ bị “khai tử” để làm nhà, làm đường
+https://voz.vn/.../can-canh-nhung-ho-nuoc-o-ha-noi-nguy.../",khong,3,Tiêu đề đưa tin; “khai tử” là cách nói quy ước về việc hồ bị lấp.
+A001,Team này lúc nào cũng chất 😁,khong,2,Lời khen trực tiếp; emoji cười phù hợp với lời khen.
+A014,Nam Gyu Ri khoe ảnh du lịch nghỉ dưỡng tại Nha Trang 🇻🇳,khong,3,Thông tin về ảnh du lịch; emoji cờ chỉ địa điểm.
+A016,"#VOZ_F33 - Bắt giữ 2 tên trộm nắp cống thoát nước ở trung tâm TP.HCM
+https://voz.vn/.../bat-giu-2-ten-trom-nap-cong-thoat.../",khong,3,Tiêu đề đưa tin về vụ trộm nắp cống.
+A027,"#VOZ_F33 - Đường phố Hà Nội chật kín người vui chơi, hóa trang kinh dị dịp Halloween
+https://voz.vn/.../duong-pho-ha-noi-chat-kin-nguoi-vui.../",khong,3,Tiêu đề mô tả người đi chơi và hóa trang Halloween.
+A036,"#VOZ_F33 - Trung Quốc: Sự trỗi dậy của 'văn hóa làm việc 996', thậm chí có cả 007
+https://voz.vn/.../trung-quoc-su-troi-day-cua-van-hoa.../",khong,3,Tiêu đề mô tả các chế độ làm việc; “996” và “007” là ký hiệu trong bản tin.
+A033,"Bạn chọn bên nào cũng được, miễn là thủ môn không mặc áo vàng",khong_chac,1,Điều kiện về áo vàng gợi câu đùa; thiếu tình huống bóng đá được ám chỉ.
+A030,Để tôi xem mấy ông hay hỏi VOZ sao không thấy đăng bài công nghệ có like comment share gì bài này không 😡,co,2,Thách người hay phàn nàn VOZ thiếu bài công nghệ xem họ có tương tác thật không; hàm ý họ nói một đằng làm một nẻo.
+A017,"#VOZ_F33 - Vì sao ngày càng nhiều người Việt mua iPhone dù giá cao?
+https://voz.vn/.../vi-sao-ngay-cang-nhieu-nguoi-viet-mua.../",khong,3,Câu hỏi giải thích xu hướng mua iPhone giá cao.
+A029,Challenge Fanart/ vẽ truyện Én vs Thỏ đã kết thúc. Rảnh ngồi xem lại một số bài thi nổi bật nào mọi ngừi!,khong,3,Thông báo kết thúc cuộc thi và mời xem lại bài dự thi.
+A020,"#VOZ_F33 - Việt Nam là nước có nhiều lừa đảo qua mạng nhất Đông Nam Á
+https://voz.vn/.../viet-nam-la-nuoc-co-nhieu-lua-dao-qua.../",khong,3,Tiêu đề đưa thông tin về lừa đảo qua mạng.
+A018,"Đảng Cộng hòa cân bằng số ghế Thượng viện với đảng Dân chủ, đang dành ưu thế ở Hạ Viện",khong,3,Bản tin về tương quan ghế giữa hai đảng.
+A022,Haizz,khong_chac,1,Tiếng thở dài thiếu đối tượng và tình huống.
+A035,"Nhanh, mạnh, nhưng chưa đáng kể",khong_chac,1,Vế cuối có thể hạ giọng châm chọc hoặc là nhận xét thật; thiếu đối tượng.
+A026,"#VOZ_F33 - Cô gái 9X kiếm 150 triệu đồng mỗi tháng, tự mua nhà phố
+Được nhận nuôi vozer là hồng phúc của các phú bà 🤣
+https://voz.vn/.../co-gai-9x-kiem-150-trieu-dong-moi.../",co,3,Gọi việc phú bà nhận nuôi vozer là “hồng phúc” để đảo vai và tự giễu.
+A007,Để tôi xem mấy ông hay hỏi VOZ sao không thấy đăng bài công nghệ có like comment share gì bài này không 😡,co,2,Thách người hay phàn nàn VOZ thiếu bài công nghệ xem họ có tương tác thật không; hàm ý họ nói một đằng làm một nẻo.
+A039,"#VOZ_F33 - Nhân viên Meta nhận tiền để mở khóa tài khoản Facebook, Instagram
+https://voz.vn/.../nhan-vien-meta-nhan-tien-de-mo-khoa.../",khong_chac,1,Emoji nhìn có thể biểu thị tò mò hoặc ám chỉ; thiếu bối cảnh.
+A023,🤣🤣🤣🤣,khong_chac,1,Emoji cười có thể thể hiện vui hoặc cười nhạo; thiếu đối tượng.
+A032,:v :v,khong_chac,1,Biểu tượng :v có thể đánh dấu đùa hoặc mỉa mai; thiếu bối cảnh.
+A012,"“Quyên sinh” là một từ tiếng Hán, từng được sử dụng trong Truyện Kiều. Quyên có nghĩa là từ bỏ, sinh là sinh mạng. Quyên sinh, đọc lên nghe rất nhẹ nhàng nhưng ý nghĩa lại vô cùng thảm khốc. Vậy nên cụ Nguyễn Du đã mượn từ ""Quyên sinh"" trong chữ Hán để tả hành động của Kiều khi ấy.
+Không chỉ tiếng Việt, tiếng Pháp cũng mượn từ này. “Quyensing” trong tiếng Pháp có nghĩa là tự huỷ.
+Còn người tự huỷ trong tiếng Pháp là Le Quyensinger
+- Ái Vân",co,2,Giả giọng giải nghĩa nghiêm túc rồi bịa từ tiếng Pháp để chơi chữ với tên Lệ Quyên.
+A021,We declared Charlie Puth should be a bigger artist. 😍🥰,khong,2,Lời ủng hộ ca sĩ trực tiếp; emoji thể hiện yêu thích.
+A034,🥺🥺🥺,khong_chac,1,Emoji biểu thị cảm xúc nhưng thiếu đối tượng để xác định dụng ý.
+A009,Niệm nuôn,khong_chac,1,Thiếu đối tượng và tình huống của lời “Niệm nuôn”.
+A038,👀,khong,3,Tiêu đề đưa tin về việc nhân viên nhận tiền mở khóa tài khoản.
+A004,"Hôm nay lười vẽ cho reup cái nha, nha!",khong,3,Xin đăng lại bài vì lười vẽ; lặp từ để nài vui.
+A031,Tình iu ở khắp quanh ta,khong,2,Phát biểu tình cảm trực tiếp; cách viết “iu” tạo giọng thân mật.
+A008,"#VOZ_F33 - Xử trí thế nào khi bắt gặp con lén đọc truyện, xem phim 17+1?
+https://voz.vn/.../xu-tri-the-nao-khi-bat-gap-con-len.../",khong,3,Câu hỏi tư vấn; “17+1” là cách viết tránh trực tiếp.
+A028,"#VOZ_F33 - NÓNG: Nới room tín dụng thêm 1,5 – 2% cho toàn hệ thống ngân hàng
+https://voz.vn/.../nong-noi-room-tin-dung-them-1-5-2-cho.../",khong,3,Đưa tin về việc nới hạn mức tín dụng; “NÓNG” đánh dấu tin mới.
+A006,Để tôi xem mấy ông hay hỏi VOZ sao không thấy đăng bài công nghệ có like comment share gì bài này không 😡,co,2,Thách người hay phàn nàn VOZ thiếu bài công nghệ xem họ có tương tác thật không; hàm ý họ nói một đằng làm một nẻo.
+A019,"Nay tao đã có áo tàng hình nhờ đổi Samsung Galaxy A32 với Tắc kè, chúng mày làm gì được tao?
+#viettelstore #samsung #GalaxyA32_5G",co,3,"Áo tàng hình do đổi điện thoại với tắc kè là phóng đại phi thực tế, dẫn tới lời thách thức."
+A015,Old but GOLD - Camry mãi đỉnh!!!,khong,2,Lời khen trực tiếp dành cho Camry; cảm thán nhấn mạnh thái độ.
+A003,"RYU JUN YEOL LÊN TIẾNG VỀ CÁC ỒN ÀO CÁ NHÂN: “VÀO THỜI ĐIỂM ĐÓ, TÔI NGHĨ TỐT NHẤT LÀ IM LẶNG”
+Nam diễn viên Ryu Jun-yeol nói về những tranh cãi gần đây tại buổi giới thiệu phim mới của Netflix 'The 8 Show' được tổ chức tại Jung-gu, Seoul: 
+“Giữa các vấn đề liên quan đến cuộc sống cá nhân của tôi, nhiều bài đăng được đăng lên mạng xã hội trái với ý muốn của tôi và tôi nghĩ tốt nhất là giữ im lặng vào thời điểm đó, thay vì trả lời từng bài một. Khi tham dự buổi chơi golf chuyên nghiệp ở Mỹ, tôi cũng thấy những ý kiến ​​​​chỉ trích về những câu chuyện liên quan. Đó là dịp để nhìn lại bản thân mình”. 
+Sau đó anh ấy tuyên bố: “Vì đây là vấn đề cá nhân nên tôi muốn nó riêng tư hơn”.",khong,3,Tường thuật và trích lời giải thích theo nghĩa trực tiếp.
+A005,"Nữ CEO Hannah Olala chính thức trở thành thành viên trong hội đồng quốc tế của Unicef, quyên góp 10 tỷ đồng cho tương lai trẻ em Việt Nam.
+Được biết cô hiện đang sống trong penthouse 600m2, 13 năm trước đã nhận lương 1,1 tỷ/năm",khong,3,"Đưa thông tin về vai trò, khoản quyên góp và tài sản."
+A013,"#VOZ_F33 - Uống rượu say, gọi điện đến tổng đài 113 để… trêu đùa
+https://voz.vn/.../uong-ruou-say-goi-dien-den-tong-dai.../",khong,3,Tiêu đề thuật lại hành động trêu đùa; dấu ba chấm tạo nhịp.
+A037,"#VO_F33 - Hà Nội: Cờ lê sắt từ tầng cao chung cư rơi trúng người phụ nữ đang bế con
+https://voz.vn/.../ha-noi-co-le-sat-tu-tang-cao-chung-cu.../",khong,3,Tiêu đề đưa tin về sự cố vật rơi.
+A024,Vừa đi làm 8 tiếng về thì eny gửi cho bài test 😒,khong_chac,1,Emoji khó chịu cho thấy bực bội; thiếu nội dung bài test để xác định ý mỉa mai.
+A040,"#VOZ_F33 - Pháp chặn TikTok để dập tắt tình trạng bất ổn ở New Caledonia
+https://voz.vn/.../phap-chan-tiktok-de-dap-tat-tinh.../",khong,3,Tiêu đề đưa tin về quyết định chặn TikTok.
