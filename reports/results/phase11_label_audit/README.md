@@ -23,3 +23,9 @@ Mỗi người dùng bản sao riêng. Phát lần lượt từng phiếu và th
 ## Tổng hợp
 
 Ghép phiếu bằng `audit_id` sau khi cả hai hoàn tất. Báo tỷ lệ đồng thuận thô cho từng lượt và cho vai trò của ảnh, số trường hợp thiếu ảnh hoặc không chắc, cùng ví dụ bất đồng. Giữ cả hai đánh giá gốc và ghi quyết định thống nhất vào bảng riêng. Đánh dấu mẫu `cần ảnh` khi đánh giá đã thống nhất cho thấy caption đứng riêng không đủ, cả cặp có châm biếm và ảnh cung cấp bằng chứng cần thiết. Sau đó mở nhãn benchmark để phân tích mức độ khớp với đánh giá của hai người.
+
+## Lượt gán nhãn bổ sung bằng AI
+
+`01_caption_ai_pass1.csv` chứa một lượt tự gán nhãn của trợ lý trong phiên làm việc hiện tại. Lượt này dựa trên phiếu caption và tiêu chí châm biếm trong guideline, giữ nhãn `khong_chac` khi câu chữ cần ngữ cảnh để phân biệt mỉa mai với cách hiểu thông thường. File lưu một nhận định và căn cứ cho từng mã mẫu. Dùng trường này như đánh giá AI riêng, bên cạnh các phiếu của người đánh giá.
+
+Phần ảnh và cả c
