@@ -183,3 +183,6 @@ Bảng này phải nằm cuối file: `scripts/train.py` ghi thêm dòng mới v
 | 2026-11-22 | `ca_ce_s1` | `de71102` | server | 0.3724 | 0.3784 | 11.7 | Phase11 controlled ce seed 1 | peak VRAM 1.33 GB |
 | 2026-11-22 | `ca_la_s2` | `de71102` | server | 0.4042 | 0.3890 | 10.2 | Phase11 controlled la seed 2 | peak VRAM 1.32 GB |
 | 2026-11-22 | `ca_ce_s2` | `de71102` | server | 0.4004 | 0.4167 | 22.6 | Phase11 controlled ce seed 2 | peak VRAM 1.32 GB |
+| 2026-11-22 | `p11_caption_la_s42` | `f8f25ab` | server | 0.3958 | nan | 1.3 | plan phase11_image_contribution | peak VRAM 0.87 GB |
+| 2026-11-22 | `p11_caption_la_s1` | `f8f25ab` | server | 0.3862 | nan | 1.3 | plan phase11_image_contribution | peak VRAM 0.87 GB |
+| 2026-11-22 | `p11_caption_la_s2` | `f8f25ab` | server | 0.3926 | nan | 2.2 | plan phase11_image_contribution | peak VRAM 0.87 GB |
