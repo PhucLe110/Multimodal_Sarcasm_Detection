@@ -1,0 +1,22 @@
+# Match the Phase 11 LA runs while replacing cross-attention with caption-only fusion.
+name: phase11_image_contribution
+seeds: [42, 1, 2]
+overrides:
+  - model.modality=text
+  - data.split=official
+  - data.split_seed=42
+  - data.sampler=random
+  - data.image_augment=false
+  - data.augment.file=null
+  - data.image_text.use_ocr=false
+  - data.image_text.use_description=false
+  - train.num_workers=0
+  - train.select_metric=macro_f1
+  - train.select_exclude_labels=[]
+  - train.eval_test=false
+  - eval.prior_correction=false
+evaluate: [val, test]
+refresh_report: false
+runs:
+  - config: configs/fusion_cross_attn_frozen_logit_adjustment.yaml
+    name: p11_caption_la
