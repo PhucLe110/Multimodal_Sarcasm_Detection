@@ -12,8 +12,8 @@ else is held fixed. They are not a fresh held-out estimate.
 | Item | Finding |
 |---|---|
 | Word report `Phase 11_ Cross-Attention + Imbalance Techniques.docx` | **Not found** in the repo or anywhere on this machine. Its numbers (CE 0.373 ± 0.011, LA 0.419 ± 0.011) are known only from the task statement. |
-| Original Kaggle or server artifacts (resolved configs, logs, checkpoints, metrics, predictions) | **None found.** There are no `fusion_cross_attn_frozen*` output dirs and no Phase 11 rows in `reports/results/results.md`. Notebook 11 has no saved outputs. |
-| Commit used originally | Unverifiable. Notebook 11 clones `REF = "main"`, not a pinned hash. |
+| Original Kaggle or server artifacts (resolved configs, logs, checkpoints, metrics, predictions) | **Only summary rows.** After merging `main` (2026-11-23), `reports/results/results.md` has a Phase 11 section (commit `368522c`) with one row per run: commit, val and test macro-F1, and training time. Resolved configs, logs, checkpoints and per-sample predictions are still not available. Notebook 11 has no saved outputs. |
+| Commit used originally | `3a1b3c7` (Kaggle), from those rows. At that commit `fusion_cross_attn_frozen.yaml`, `fusion_cross_attn_frozen_logit_adjustment.yaml`, `fusion_cross_attn.yaml` and `base.yaml` are identical to the versions audited here, and Notebook 11 overrides only `seed`, `data.split_seed` and `name`. |
 | Split and training seeds | Notebook 11 uses `SEEDS = [42, 1, 2]` and `SPLIT_SEED = 42`, with the official split (train 10,805, val = public test 1,413, test = private test 1,504). |
 | Checkpoint selection | `train.select_metric` keeps its default, `macro_f1` (4-class val macro-F1, no excluded labels), with early stopping on the same score. |
 | Effective hyperparameters | Notebook 11 passes only `seed`, `data.split_seed` and `name` as overrides, so each arm used its own YAML defaults (table below). |
@@ -29,10 +29,17 @@ What the configs resolve to when run the way Notebook 11 runs them:
 | `loss.name` | ce | logit_adjustment (τ = 1.0) |
 
 The notebook's own markdown lists the four regularisation changes as applying "so với baseline" (relative
-to the baseline), but the code never applies them to CA-base. The Word report says both arms used the same
-training settings. **That claim is contradicted by the repository code.** If the original runs used
-Notebook 11 as committed, they differed in five settings, not one. Since no original artifact survives,
-none of the six original runs could be reused, and all six were retrained here.
+to the baseline), but the code never applies them to CA-base. The Word report, and the header of the Phase 11
+section in `results.md`, say all runs used lr_head 5e-4, weight decay 0.05, dropout 0.3 and patience 5.
+**At commit `3a1b3c7` the code applies those settings only to LA.** The original CE runs therefore almost
+certainly differed from LA in five settings, not one. The only way they could have matched is if the notebook
+was edited on Kaggle without committing the change, and no saved config exists to check that. The CE runs'
+shorter training times (14.4 / 7.9 / 10.0 min vs 27.5 / 19.9 / 19.8 for LA) fit patience 3, but don't prove it.
+
+Original private-test macro-F1 from those rows: CE 0.3812 / 0.3761 / 0.3605 (seeds 42 / 1 / 2) and LA
+0.4236 / 0.4273 / 0.4071. That is CE 0.373 ± 0.011 and LA 0.419 ± 0.011, matching the Word report exactly.
+The per-seed gain is +0.042 / +0.051 / +0.047. Without predictions, the original runs can't be paired
+sample-by-sample or reused as matched arms, so all six were retrained here.
 
 ## 2. Matched setup
 
@@ -141,10 +148,10 @@ and loses 71.
 
 | Original claim | Status |
 |---|---|
-| CE 0.373 ± 0.011 | Not reproducible or verifiable: no artifacts. Matched CE gives 0.390 ± 0.023. The original CE probably ran with lr 1e-3 / wd 0.01 / dropout 0.2 / patience 3. |
-| LA 0.419 ± 0.011 | Not verifiable. Matched LA gives 0.404 ± 0.013, which uses the same settings the LA YAML specifies, so the gap (−0.015) is not explained by config. It may come from a different commit, environment or cache. |
-| LA improves macro-F1 by about +0.046 | **Partly supported.** The matched mean gain is +0.014, about a third of the reported gain. Up to roughly two-thirds of the original gap is plausibly due to the hyperparameter confound and seed noise rather than LA. |
-| "Both runs used the same training settings" | **Contradicted** by Notebook 11 and the YAMLs as committed. |
+| CE 0.373 ± 0.011 | **Supported by the `results.md` rows** (commit `3a1b3c7`, Kaggle), but under CE's own defaults (lr 1e-3 / wd 0.01 / dropout 0.2 / patience 3), not matched settings. With matched settings CE rises to 0.390 ± 0.023 (+0.017). |
+| LA 0.419 ± 0.011 | **Supported by the `results.md` rows.** The rerun with the same LA config gives 0.404 ± 0.013 (−0.015). The config is identical, so the difference comes from code commit (`3a1b3c7` vs `de71102`), hardware (T4 vs RTX 5070) or the preprocessed cache, plus seed noise. |
+| LA improves macro-F1 by about +0.046 | **Partly supported.** The original gap is real as recorded, but it compares unmatched arms. With settings matched, the gain is +0.014 (one seed negative), about a third. Roughly half the original gap comes from CE getting better once it is given the same regularisation. |
+| "Both runs used the same training settings" | **Contradicted** by the code at the original commit `3a1b3c7` (no saved resolved config exists to show otherwise). |
 
 ## 5. Summary
 
@@ -220,6 +227,80 @@ Cross-attention without LA matches caption-only + LA on macro-F1 exactly.
 
 ## 8. Still unavailable
 
-- The Word report itself, and every artifact from the original Kaggle runs. The original numbers and the
-  settings those runs actually used remain unverified.
+Caption-only runs: `data/server/outputs/p11_caption_la_s{42,1,2}` (plan `configs/experiments/phase11_image_contribution.yaml`,
+commit `f8f25ab`). They resolve to the same config as `ca_la_s*` except `model.modality=text`: the same LA loss
+(τ = 1.0), lr, weight decay, dropout, patience, sampler and selection metric. Predictions join on all 1,504 IDs
+with identical labels. Analysis: `analyze_caption_vs_xattn.py` → `caption_vs_xattn_per_seed.csv`,
+`caption_vs_xattn_stats.json`, `caption_vs_xattn_flips_by_class.csv`.
+
+| Mean ± SD (3 seeds) | Caption-only + LA | Cross-attn + LA | Cross-attn + CE |
+|---|---|---|---|
+| Macro-F1 (4) | 0.390 ± 0.006 | 0.404 ± 0.013 | 0.390 ± 0.023 |
+| Macro-F1 (3) | 0.519 ± 0.008 | 0.539 ± 0.018 | 0.520 ± 0.031 |
+| Accuracy | 0.722 ± 0.033 | 0.755 ± 0.009 | 0.733 ± 0.047 |
+| Weighted F1 | 0.736 ± 0.018 | 0.758 ± 0.004 | 0.733 ± 0.033 |
+| F1 not / multi | 0.658 / 0.803 | 0.654 / 0.837 | 0.641 / 0.805 |
+| image P / R / F1 | 0.081 / 0.150 / 0.097 | 0.101 / 0.183 / 0.126 | 0.123 / 0.117 / 0.115 |
+| image correct (of 40) / predicted | 6.0 / 83 | 7.3 / 69 | 4.7 / 33 |
+| text correct (of 7) | 0 | 0 | 0 |
+
+Paired differences use the same bootstrap as above (B = 10,000, the same resampled IDs for all models and seeds,
+conditional on these seeds):
+
+| Comparison | Per seed (42 / 1 / 2) | Mean | 95% CI |
+|---|---|---|---|
+| Cross-attn LA − caption LA, macro-F1 (4) | +0.030 / +0.014 / −0.000 | +0.015 | [−0.004, +0.032] |
+| Cross-attn LA − caption LA, accuracy | +0.047 / −0.009 / +0.061 | +0.033 | [+0.019, +0.047] |
+| Cross-attn CE − caption LA, macro-F1 (4) | −0.009 / −0.017 / +0.027 | +0.000 | [−0.020, +0.020] |
+
+Disagreements between cross-attn LA and caption LA, summed over seeds: cross-attn wins 356 and loses 135 on `multi`,
+wins 68 and loses 145 on `not`, wins 15 and loses 11 on `image`, and neither ever gets a `text` sample right.
+
+Reading: adding the image through cross-attention, under LA, gives a reliable accuracy gain (+0.033) but a
+macro-F1 gain (+0.015) whose interval includes zero. The gain comes almost entirely from `multi-sarcasm`. On
+`image-sarcasm`, the class where the image should matter most, cross-attention gets 1.3 more of 40 correct per
+seed, which is within noise. Caption-only predicts `image-sarcasm` *more* often than cross-attention (83 vs 69
+per seed) and gets 6 of 40 right without ever seeing an image, so captions carry cues for that label.
+Cross-attention without LA matches caption-only + LA on macro-F1 exactly.
+
+## 8. Label audit: samples where both humans judged the image necessary
+
+The 40-sample pilot in `reports/results/phase11_label_audit/` now has both human raters (person_2 arrived with
+`main`, commit `3aba59f`) and two AI raters. Analysis: `analyze_label_audit.py` → `label_audit_analysis.json`
+and `phase11_label_audit/image_needed_model_comparison.csv` (one row per audit sample, every rater's call, every
+model's per-seed prediction).
+
+Two problems in person_2's sheets were repaired on read; the original files are unchanged. In
+`01_caption_person_2.csv`, 39 of 40 answers sit 3 columns to the right of the header, consistently, with IDs
+and captions matching the blank form. In `02_image_person_2.csv`, 2 rows (A008, A036) have unquoted commas in
+the free-text `evidence` column. Person_2 left the pair judgment for A023 blank.
+
+**Raw agreement between the two humans:** caption sarcasm 0.80 (32/40), image sarcasm 0.80 (32/40), pair
+sarcasm 0.85 (33/39), image contribution **0.54** (21/39). Agreement on *whether the image is needed* is low.
+
+**README rule** (caption alone not sarcastic, pair sarcastic, `image_contribution = can`): person_1 marks 21,
+person_2 15, AI rater 1 22, AI rater 2 18. **Both humans agree on 14**: A008, A011, A013, A016, A017, A020,
+A022, A027, A028, A032, A036, A038, A039, A040. That's 11 `image` and 3 `not` by benchmark label, 10 of them
+from the `image_flip` group. The humans disagree on 7 (A004, A009, A025, A026, A034, A035, A037). All four
+raters agree on 11. None of these readings gives the 8 samples mentioned in the hand-off.
+
+Correct against the benchmark label, summed over 3 seeds:
+
+| Set | n | Caption-only + LA | Cross-attn + LA | Cross-attn + CE | Cross-attn LA vs caption LA per sample (better / worse / tied) |
+|---|---|---|---|---|---|
+| Both humans | 14 | 18/42 | 17/42 | 17/42 | 4 / 3 / 7 |
+| All four raters | 11 | 15/33 | 13/33 | 12/33 | 3 / 3 / 5 |
+| Either human | 22 | 28/66 | 25/66 | 27/66 | 6 / 5 / 11 |
+
+Cross-attention does not beat caption-only on the samples where people agree the image carries the
+sarcasm. Cross-attn + LA calls 37 of 42 sarcastic on the both-humans set (vs 25 for caption-only), but mostly
+as `multi` rather than `image`. The 3 `not`-labelled samples in the set (A013, A028, A036) are ones both humans
+judged sarcastic with the image essential, so "correct vs benchmark" penalises models for agreeing with the
+raters there. With 14 purposively selected samples, read these as examples, not estimates.
+
+## 9. Still unavailable
+
+- The Word report itself, and the original runs' resolved configs, logs, checkpoints and predictions. Only
+  the per-run summary rows in `results.md` survive. The settings those runs actually used are inferred from
+  the code at `3a1b3c7`, not read from a saved config.
 - Training-seed uncertainty beyond three seeds. A between-seed interval would need more seeds.
