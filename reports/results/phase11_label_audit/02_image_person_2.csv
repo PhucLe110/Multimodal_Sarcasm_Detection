@@ -1,0 +1,41 @@
+﻿audit_id,image,sarcasm,confidence,evidence
+A022,images/A022.jpg,co,3,cà khịa nhân vật còn trẻ trâu "30 tuổi đầu rồi mà vẫn nhận mình là thiếu nhi"
+A025,images/A025.jpg,co,2,meme chữ "có quỷ theo sau"
+A010,images/A010.jpg,khong,3,lý thuyết vật lý "thuyết lượng tử"
+A006,images/A006.jpg,khong,3,lý thuyết vật lý "nhiệt dung của chất rắn"
+A017,images/A017.jpg,co,3,cà khịa những người nghèo nhưng đùa đòi xài "iphone 3 mắt"
+A027,images/A027.jpg,co,3,chế giễu giới trẻ qua bình luận "toàn đú" + "cosplay cô hồn đi giật đồ cúng"
+A004,images/A004.jpg,co,3,cà khịa cặp "bạch dương với sư tử"
+A036,images/A036.jpg,co,3,mỉa mai chế độ bóc lột của công ty chơi chữ "007" = 0 ngày nghỉ, 0 tăng lương, 7 ngày làm
+A007,images/A007.jpg,khong,3,lý thuyết vật lý "thuyết lượng tử"
+A011,images/A011.jpg,co,2,cà khịa một người trong số 5 người không phải người 
+A003,images/A003.jpg,khong,2,ảnh diễn viên bình thường
+A015,images/A015.jpg,khong,3,ảnh các loại xe ô tô
+A001,images/A001.jpg,khong,3,lời khen đội bóng ngầu
+A020,images/A020.jpg,co,3,mỉa mai kiểu tự hào tự luyến mù quáng
+A002,images/A002.jpg,khong,3,bản đồ của "Hà Nội 1873"
+A016,images/A016.jpg,co,2,cà khịa sự đồng cảm vô cùng ngây thơ 
+A029,images/A029.jpg,khong,2,câu chuyện hài hước truyện tranh ngắn
+A028,images/A028.jpg,co,2,không chắc chắn và hoài nghi về chính sách 
+A012,images/A012.jpg,khong,3,lời trong sách 
+A013,images/A013.jpg,co,3,khen ngược và mỉa mai người có sở thích "dị"
+A023,images/A023.jpg,khong_chac,2,lời tìm kiếm và xin review chỗ massage
+A035,images/A035.jpg,co,3,cà khịa chiếc xe ô tô cùi bắp
+A019,images/A019.jpg,khong,2,hài hước truyện tranh ngắn quảng cáo
+A034,images/A034.jpg,khong,2,hài hước truyện tranh ngắn
+A033,images/A033.jpg,khong,2,Cầu thủ mang giáp robot
+A039,images/A039.jpg,co,2,cà khịa "CSKH và chính sách"
+A024,images/A024.jpg,khong,2,quảng cáo và hài
+A008,images/A008.jpg,co,3,cà khịa bằng cách nói ngược lại kiểm tra "full HD", "gu idol", "adblock"
+A031,images/A031.jpg,khong,3,lời kể tự sự và biết ơn
+A009,images/A009.jpg,co,2,tự mỉa mai chính bản thân vì làm "1 tiếng trước deadline"
+A038,images/A038.jpg,co,3,nói ngược mỉa mai người làm trên "OnlyF"
+A030,images/A030.jpg,khong,3,lý thuyết vật lý "bức xạ vật đen"
+A040,images/A040.jpg,co,3,mỉa mai "tự do ngôn luận" tại Pháp
+A032,images/A032.jpg,co,3,cà khịa 2 CLB chưa vô địch C1
+A037,images/A037.jpg,co,2,mỉa mai những người có ý thức kém
+A021,images/A021.jpg,khong,2,bài đăng về bài hát của thần tượng "taylor swift"
+A014,images/A014.jpg,khong,3,ảnh chụp chân dung cạnh hồ bơi
+A005,images/A005.jpg,khong,3,thông báo tin tức quyên góp 10 tỷ đồng
+A018,images/A018.jpg,khong,3,thông báo tình hình bầu cử ở Mỹ
+A026,images/A026.jpg,co,2,cà khịa người ăn bám
